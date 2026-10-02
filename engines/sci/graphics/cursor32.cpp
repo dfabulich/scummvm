@@ -217,16 +217,19 @@ void GfxCursor32::setView(const GuiResourceId viewId, const int16 loopNo, const 
 		// PQ4: We only make the cursors bigger if they are above a set
 		//      threshold size because inventory items usually have a
 		//      high-resolution cursor representation.
-		bool pixelDouble = false;
+		int16 scale = g_sci->_gfxFrameout->getHiResScale();
 		if (g_sci->_gfxFrameout->isHiRes() &&
 			(g_sci->getGameId() == GID_GK1 ||
 			(g_sci->getGameId() == GID_PQ4 && _width <= 22 && _height <= 22))) {
 
-			_width *= 2;
-			_height *= 2;
-			_hotSpot.x *= 2;
-			_hotSpot.y *= 2;
-			pixelDouble = true;
+			scale *= 2;
+		}
+
+		if (scale > 1) {
+			_width *= scale;
+			_height *= scale;
+			_hotSpot.x *= scale;
+			_hotSpot.y *= scale;
 		}
 
 		_cursor.data = (byte *)realloc(_cursor.data, _width * _height);
@@ -235,8 +238,8 @@ void GfxCursor32::setView(const GuiResourceId viewId, const int16 loopNo, const 
 
 		Buffer target;
 		target.init(_width, _height, _width, _cursor.data, Graphics::PixelFormat::createFormatCLUT8());
-		if (pixelDouble) {
-			view.draw(target, _cursor.rect, Common::Point(0, 0), false, 2, 2);
+		if (scale > 1) {
+			view.draw(target, _cursor.rect, Common::Point(0, 0), false, scale, scale);
 		} else {
 			view.draw(target, _cursor.rect, Common::Point(0, 0), false);
 		}

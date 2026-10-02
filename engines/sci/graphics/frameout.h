@@ -57,6 +57,13 @@ public:
 	inline bool isHiRes() const { return _isHiRes; }
 
 	/**
+	 * Returns the number of output pixels per 640x480 high resolution pixel
+	 * along each axis. This is greater than 1 when sharp high resolution
+	 * scaling is enabled, so that 320x200 content scales by whole pixels.
+	 */
+	inline int16 getHiResScale() const { return _hiResScale; }
+
+	/**
 	 * Gets the x-resolution used by game scripts.
 	 */
 	inline int16 getScriptWidth() const { return _scriptWidth; }
@@ -88,6 +95,11 @@ private:
 	bool _isHiRes;
 
 	/**
+	 * @see getHiResScale
+	 */
+	int16 _hiResScale;
+
+	/**
 	 * The resolution used by game scripts.
 	 * @see celobj32.h comments on kLowResX/kLowResY.
 	 */
@@ -98,6 +110,11 @@ private:
 	 * resolution.
 	 */
 	bool detectHiRes() const;
+
+	/**
+	 * Determines the scale factor of the output buffer relative to 640x480.
+	 */
+	int16 detectHiResScale() const;
 
 #pragma mark -
 #pragma mark Screen items

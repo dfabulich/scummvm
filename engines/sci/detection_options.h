@@ -56,7 +56,7 @@ const ADExtraGuiOptionsMap optionsList[] = {
 		GAMEOPTION_SHARP_HIRES_SCALING,
 		{
 			_s("Sharp high resolution scaling"),
-			_s("Render high resolution graphics at 3200x2200 so that text and low resolution graphics are scaled evenly. Requires more CPU power; works best with a stretch mode that fits the window and graphics filtering enabled"),
+			_s("Render high resolution graphics at five times their normal size so that text and low resolution graphics are scaled evenly. Requires more CPU power; works best with a stretch mode that fits the window and graphics filtering enabled"),
 			"enable_sharp_hires_scaling",
 			false,
 			0,

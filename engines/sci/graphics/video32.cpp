@@ -253,7 +253,15 @@ void VideoPlayer::renderFrame(const Graphics::Surface &nextFrame) const {
 
 	if (_decoder->getWidth() != _drawRect.width() || _decoder->getHeight() != _drawRect.height()) {
 		Graphics::Surface *const unscaledFrame(convertedFrame);
-		if (_hqVideoMode) {
+		const int16 hiResScale = g_sci->_gfxFrameout->getHiResScale();
+		if (_hqVideoMode && hiResScale > 1) {
+			// Filtering at the full sharp scaling size is too slow for real-time
+			// playback, so filter at the normal size and then enlarge by whole pixels
+			Graphics::Surface *const filteredFrame = unscaledFrame->scale(_drawRect.width() / hiResScale, _drawRect.height() / hiResScale, true);
+			convertedFrame = filteredFrame->scale(_drawRect.width(), _drawRect.height(), false);
+			filteredFrame->free();
+			delete filteredFrame;
+		} else if (_hqVideoMode) {
 			convertedFrame = unscaledFrame->scale(_drawRect.width(), _drawRect.height(), true);
 		} else {
 			convertedFrame = unscaledFrame->scale(_drawRect.width(), _drawRect.height(), false);
@@ -419,6 +427,9 @@ AVIPlayer::IOStatus AVIPlayer::init(const bool doublePixels) {
 		width *= 2;
 		height *= 2;
 	}
+
+	width *= g_sci->_gfxFrameout->getHiResScale();
+	height *= g_sci->_gfxFrameout->getHiResScale();
 
 	const int16 screenWidth = g_sci->_gfxFrameout->getScreenWidth();
 	const int16 screenHeight = g_sci->_gfxFrameout->getScreenHeight();
