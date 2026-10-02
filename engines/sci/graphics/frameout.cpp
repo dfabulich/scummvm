@@ -22,6 +22,7 @@
 #include "common/algorithm.h"
 #include "common/config-manager.h"
 #include "common/events.h"
+#include "common/gui_options.h"
 #include "common/keyboard.h"
 #include "common/list.h"
 #include "common/str.h"
@@ -34,6 +35,7 @@
 
 #include "sci/sci.h"
 #include "sci/console.h"
+#include "sci/detection.h"
 #include "sci/event.h"
 #include "sci/engine/features.h"
 #include "sci/engine/kernel.h"
@@ -61,6 +63,7 @@ namespace Sci {
 
 GfxFrameout::GfxFrameout(SegManager *segMan, GfxPalette32 *palette, GfxTransitions32 *transitions, GfxCursor32 *cursor) :
 	_isHiRes(detectHiRes()),
+	_hiResScale(detectHiResScale()),
 	_palette(palette),
 	_cursor(cursor),
 	_segMan(segMan),
@@ -75,7 +78,7 @@ GfxFrameout::GfxFrameout(SegManager *segMan, GfxPalette32 *palette, GfxTransitio
 	if (g_sci->getGameId() == GID_PHANTASMAGORIA) {
 		_currentBuffer.create(630, 450, Graphics::PixelFormat::createFormatCLUT8());
 	} else if (_isHiRes) {
-		_currentBuffer.create(640, 480, Graphics::PixelFormat::createFormatCLUT8());
+		_currentBuffer.create(640 * _hiResScale, 480 * _hiResScale, Graphics::PixelFormat::createFormatCLUT8());
 	} else {
 		_currentBuffer.create(320, 200, Graphics::PixelFormat::createFormatCLUT8());
 	}
@@ -165,6 +168,18 @@ bool GfxFrameout::detectHiRes() const {
 	// All other games are either high resolution by default, or have a
 	// user-defined toggle
 	return ConfMan.getBool("enable_high_resolution_graphics");
+}
+
+int16 GfxFrameout::detectHiResScale() const {
+	// 3200x2400 is the smallest resolution where both 320x200 content (as
+	// 10x12 blocks) and 640x480 content (as 5x5 blocks) scale by whole pixels
+	if (_isHiRes && g_sci->getGameId() != GID_PHANTASMAGORIA &&
+		Common::checkGameGUIOption(GAMEOPTION_SHARP_HIRES_SCALING, ConfMan.get("guioptions")) &&
+		ConfMan.getBool("enable_sharp_hires_scaling")) {
+		return 5;
+	}
+
+	return 1;
 }
 
 #pragma mark -
@@ -1259,12 +1274,12 @@ void GfxFrameout::shakeScreen(int16 numShakes, const ShakeDirection direction) {
 
 		int shakeXOffset = 0;
 		if (direction & kShakeHorizontal) {
-			shakeXOffset = _isHiRes ? 8 : 4;
+			shakeXOffset = _isHiRes ? 8 * _hiResScale : 4;
 		}
 
 		int shakeYOffset = 0;
 		if (direction & kShakeVertical) {
-			shakeYOffset = _isHiRes ? 8 : 4;
+			shakeYOffset = _isHiRes ? 8 * _hiResScale : 4;
 		}
 
 		g_system->setShakePos(shakeXOffset, shakeYOffset);
