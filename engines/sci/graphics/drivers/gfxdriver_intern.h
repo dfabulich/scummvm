@@ -23,6 +23,7 @@
 #ifndef SCI_GRAPHICS_DRIVERS_GFXDRIVER_INTERN_H
 #define SCI_GRAPHICS_DRIVERS_GFXDRIVER_INTERN_H
 
+#include "common/array.h"
 #include "common/platform.h"
 #include "sci/graphics/drivers/gfxdriver.h"
 
@@ -51,6 +52,9 @@ protected:
 	byte *_internalPalette;
 	uint16 _virtualW;
 	uint16 _virtualH;
+	// Size of the backend screen. This differs from the screen size only for drivers which resample their output.
+	uint16 _outputW;
+	uint16 _outputH;
 	Graphics::PixelFormat _format;
 	byte _srcPixelSize;
 	bool _cursorUsesScreenPalette;
@@ -109,6 +113,7 @@ protected:
 	// Maps virtual coordinates to the backend screen. This differs from getRealCoords() only for drivers
 	// whose screen is larger than the hires coordinate space exposed to the engine.
 	virtual Common::Point getScreenCoords(Common::Point pos) const { return getRealCoords(pos); }
+	bool isResampled() const { return _outputW != _screenW || _outputH != _screenH; }
 	typedef void (*GlyphRenderProc)(byte*, int, const byte*, int, int, int, int);
 	GlyphRenderProc _renderGlyph;
 	typedef void (*ScaledRenderProc)(byte*, const byte*, int, int, int);
@@ -118,8 +123,22 @@ protected:
 	uint16 _vScaleMult;
 	uint16 _vScaleDiv;
 	byte *_scaledBitmap;
+	// Number of adjacent screen columns which always have the same content, so resampling can read just one of them
+	uint16 _resampleColumnGroup;
 private:
 	virtual void renderBitmap(const byte *src, int pitch, int dx, int dy, int w, int h, int &realWidth, int &realHeight);
+	void updateScreenResampled(int destX, int destY, int w, int h);
+	// Area averaging weights (summing up to 256) of the screen pixels that make up one output pixel
+	struct ResampleTaps {
+		enum { kMaxTaps = 4 };
+		uint16 first;
+		uint16 count;
+		uint16 weights[kMaxTaps];
+	};
+	static void buildResampleTaps(Common::Array<ResampleTaps> &taps, uint srcSize, uint dstSize);
+	Common::Array<ResampleTaps> _hTaps;
+	Common::Array<ResampleTaps> _vTaps;
+	Common::Array<uint32> _resampleRow;
 	const bool _scaleCursor;
 	uint16 _cursorWidth;
 	uint16 _cursorHeight;

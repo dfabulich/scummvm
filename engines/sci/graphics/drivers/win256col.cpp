@@ -30,9 +30,10 @@ namespace Sci {
 
 // In sharp mode the screen is 3200x2200 instead of 640x440, which is the smallest size where both the 320x200 lowres
 // graphics (10x11 pixel blocks) and the 640x440 hires graphics (5x5 pixel blocks) get scaled by integer factors.
+// If rgb output is available, that screen gets resampled to fit 1080 lines, instead of leaving that to the backend.
 class WindowsGfx256ColorsDriver final : public UpscaledGfxDriver {
 public:
-	WindowsGfx256ColorsDriver(bool coloredDosStyleCursors, bool smallWindow, bool sharpScaling, bool rgbRendering);
+	WindowsGfx256ColorsDriver(bool coloredDosStyleCursors, bool smallWindow, bool sharpScaling, bool resampleSharpScreen, bool rgbRendering);
 	~WindowsGfx256ColorsDriver() override {}
 	bool initScreen(const Graphics::PixelFormat *format) override;
 	void copyRectToScreen(const byte *src, int srcX, int srcY, int pitch, int destX, int destY, int w, int h, const PaletteMod *palMods, const byte *palModMapping) override;
@@ -61,8 +62,8 @@ private:
 	Common::Array<byte> _sharpCursor;
 };
 
-WindowsGfx256ColorsDriver::WindowsGfx256ColorsDriver(bool coloredDosStyleCursors, bool smallWindow, bool sharpScaling, bool rgbRendering) :
-	UpscaledGfxDriver(smallWindow ? 320 : (sharpScaling ? 3200 : 640), smallWindow ? 240 : (sharpScaling ? 2200 : 440), 1, coloredDosStyleCursors && !smallWindow, rgbRendering), _dosStyleCursors(coloredDosStyleCursors), _smallWindow(smallWindow),
+WindowsGfx256ColorsDriver::WindowsGfx256ColorsDriver(bool coloredDosStyleCursors, bool smallWindow, bool sharpScaling, bool resampleSharpScreen, bool rgbRendering) :
+	UpscaledGfxDriver(smallWindow ? 320 : (sharpScaling ? 3200 : 640), smallWindow ? 240 : (sharpScaling ? 2200 : 440), 1, coloredDosStyleCursors && !smallWindow, rgbRendering || (sharpScaling && resampleSharpScreen && !smallWindow)), _dosStyleCursors(coloredDosStyleCursors), _smallWindow(smallWindow),
 		_renderLine(nullptr), _renderLine2(nullptr), _flags(0), _colorMap(nullptr), _vScaleMult2(smallWindow ? 1 : 2), _hiresScale((sharpScaling && !smallWindow) ? 5 : 1) {
 	_virtualW = 320;
 	_virtualH = 200;
@@ -73,6 +74,12 @@ WindowsGfx256ColorsDriver::WindowsGfx256ColorsDriver(bool coloredDosStyleCursors
 	if (_hiresScale > 1) {
 		_hScaleMult = 10;
 		_vScaleDiv = 1;
+		if (resampleSharpScreen) {
+			_outputH = 1080;
+			_outputW = (_screenW * _outputH + _screenH / 2) / _screenH;
+			// Everything gets drawn in blocks which are a multiple of the hires pixel width and start at multiples of it
+			_resampleColumnGroup = _hiresScale;
+		}
 	}
 }
 
@@ -244,6 +251,7 @@ void WindowsGfx256ColorsDriver::replaceCursor(const void *cursor, uint w, uint h
 			SciGfxDrvInternal::renderWinMonochromeCursor(_compositeBuffer, cursor, _currentPalette, w, h, hotspotX, hotspotY, col1, col2, keycolor, false);
 			hiresCursor = _compositeBuffer;
 		}
+		scale = MAX<int>(1, (scale * _outputH + _screenH / 2) / _screenH);
 		_sharpCursor.resize(w * h * scale * scale);
 		renderScaledBlocks(_sharpCursor.data(), w * scale, hiresCursor, w, w, h, scale, scale, nullptr);
 		CursorMan.replaceCursor(_sharpCursor.data(), w * scale, h * scale, hotspotX * scale, hotspotY * scale, keycolor);
@@ -335,7 +343,8 @@ GfxDriver *WindowsGfx256ColorsDriver_create(int rgbRendering, ...) {
 	va_end(args);
 
 	bool sharpScaling = ConfMan.hasKey("enable_sharp_hires_scaling") && ConfMan.getBool("enable_sharp_hires_scaling");
-	return new WindowsGfx256ColorsDriver(!winCursors, config == 0, sharpScaling, rgbRendering != 0);
+	bool rgbOutput = g_system->getSupportedFormats().front().bytesPerPixel > 1;
+	return new WindowsGfx256ColorsDriver(!winCursors, config == 0, sharpScaling, rgbOutput, rgbRendering != 0);
 }
 
 } // End of namespace Sci

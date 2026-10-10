@@ -32,7 +32,7 @@ UpscaledGfxDriver::UpscaledGfxDriver(int16 textAlignX, bool scaleCursor, bool rg
 
 UpscaledGfxDriver::UpscaledGfxDriver(uint16 scaledW, uint16 scaledH, int16 textAlignX, bool scaleCursor, bool rgbRendering) :
 	GfxDefaultDriver(scaledW, scaledH, false, rgbRendering), _textAlignX(textAlignX), _scaleCursor(scaleCursor), _needCursorBuffer(false),
-	_scaledBitmap(nullptr), _renderScaled(nullptr), _renderGlyph(nullptr), _cursorWidth(0), _cursorHeight(0), _hScaleMult(2), _vScaleMult(2), _vScaleDiv(1) {
+	_scaledBitmap(nullptr), _renderScaled(nullptr), _renderGlyph(nullptr), _cursorWidth(0), _cursorHeight(0), _hScaleMult(2), _vScaleMult(2), _vScaleDiv(1), _resampleColumnGroup(1) {
 	_virtualW = 320;
 	_virtualH = 200;
 }
@@ -72,7 +72,90 @@ bool UpscaledGfxDriver::initScreen(const Graphics::PixelFormat *format) {
 	_renderScaled = scaledRenderProcs[_srcPixelSize >> 1];
 	_renderGlyph = &renderGlyph;
 
+	if (isResampled()) {
+		// Averaging the screen pixels creates colors which aren't in the palette
+		if (_pixelSize == 1 || _srcPixelSize != 1)
+			error("UpscaledGfxDriver::initScreen(): Resampling requires rgb output of paletted graphics");
+		assert(_screenW % _resampleColumnGroup == 0);
+		buildResampleTaps(_hTaps, _screenW / _resampleColumnGroup, _outputW);
+		buildResampleTaps(_vTaps, _screenH, _outputH);
+	}
+
 	return true;
+}
+
+void UpscaledGfxDriver::buildResampleTaps(Common::Array<ResampleTaps> &taps, uint srcSize, uint dstSize) {
+	assert(srcSize <= dstSize * (ResampleTaps::kMaxTaps - 1));
+	taps.resize(dstSize);
+	for (uint d = 0; d < dstSize; ++d) {
+		// In units of 1 / (srcSize * dstSize), output pixel d covers [d * srcSize, (d + 1) * srcSize)
+		// and screen pixel s covers [s * dstSize, (s + 1) * dstSize).
+		const uint start = d * srcSize;
+		const uint end = start + srcSize;
+		ResampleTaps &t = taps[d];
+		t.first = start / dstSize;
+		t.count = 0;
+		uint total = 0;
+		for (uint s = t.first; s * dstSize < end; ++s) {
+			uint overlap = MIN(end, (s + 1) * dstSize) - MAX(start, s * dstSize);
+			assert(t.count < ResampleTaps::kMaxTaps);
+			t.weights[t.count] = overlap * 256 / srcSize;
+			total += t.weights[t.count++];
+		}
+		t.weights[t.count - 1] += 256 - total;
+	}
+}
+
+void UpscaledGfxDriver::updateScreenResampled(int destX, int destY, int w, int h) {
+	const int x1 = destX * _outputW / _screenW;
+	const int x2 = MIN<int>(_outputW, ((destX + w) * _outputW + _screenW - 1) / _screenW);
+	const int y1 = destY * _outputH / _screenH;
+	const int y2 = MIN<int>(_outputH, ((destY + h) * _outputH + _screenH - 1) / _screenH);
+	if (x1 >= x2 || y1 >= y2)
+		return;
+
+	const int outW = x2 - x1;
+	const int group = _resampleColumnGroup;
+	_resampleRow.resize(outW * 3);
+	byte *dst = _compositeBuffer;
+
+	for (int y = y1; y < y2; ++y) {
+		uint32 *acc = _resampleRow.data();
+		memset(acc, 0, outW * 3 * sizeof(uint32));
+		const ResampleTaps &vt = _vTaps[y];
+
+		for (int j = 0; j < vt.count; ++j) {
+			const byte *srcRow = _scaledBitmap + (vt.first + j) * _screenW;
+			const uint32 wy = vt.weights[j];
+			uint32 *a = acc;
+			for (int x = x1; x < x2; ++x) {
+				const ResampleTaps &ht = _hTaps[x];
+				const byte *s = srcRow + ht.first * group;
+				uint32 r = 0, g = 0, b = 0;
+				for (int i = 0; i < ht.count; ++i) {
+					const byte *col = &_currentPalette[s[i * group] * 3];
+					r += col[0] * ht.weights[i];
+					g += col[1] * ht.weights[i];
+					b += col[2] * ht.weights[i];
+				}
+				*a++ += r * wy;
+				*a++ += g * wy;
+				*a++ += b * wy;
+			}
+		}
+
+		const uint32 *a = acc;
+		for (int x = 0; x < outW; ++x, a += 3) {
+			uint32 color = _format.RGBToColor((a[0] + 32768) >> 16, (a[1] + 32768) >> 16, (a[2] + 32768) >> 16);
+			if (_pixelSize == 4)
+				*reinterpret_cast<uint32*>(dst) = color;
+			else
+				*reinterpret_cast<uint16*>(dst) = color;
+			dst += _pixelSize;
+		}
+	}
+
+	g_system->copyRectToScreen(_compositeBuffer, outW * _pixelSize, x1, y1, outW, y2 - y1);
 }
 
 void UpscaledGfxDriver::setPalette(const byte *colors, uint start, uint num, bool update, const PaletteMod *palMods, const byte *palModMapping) {
@@ -121,21 +204,22 @@ void UpscaledGfxDriver::replaceCursor(const void *cursor, uint w, uint h, int ho
 
 Common::Point UpscaledGfxDriver::getMousePos() const {
 	Common::Point res = GfxDriver::getMousePos();
-	res.x /= _hScaleMult;
-	res.y = res.y * _vScaleDiv / _vScaleMult;
+	res.x = res.x * _screenW / _outputW / _hScaleMult;
+	res.y = res.y * _screenH / _outputH * _vScaleDiv / _vScaleMult;
 	return res;
 }
 
 void UpscaledGfxDriver::setMousePos(const Common::Point &pos) const {
-	g_system->warpMouse(pos.x * _hScaleMult, pos.y * _vScaleMult / _vScaleDiv);
+	g_system->warpMouse(pos.x * _hScaleMult * _outputW / _screenW, pos.y * _vScaleMult / _vScaleDiv * _outputH / _screenH);
 }
 
 void UpscaledGfxDriver::setShakePos(int shakeXOffset, int shakeYOffset) const {
-	g_system->setShakePos(shakeXOffset * _hScaleMult, shakeYOffset * _vScaleMult / _vScaleDiv);
+	g_system->setShakePos(shakeXOffset * _hScaleMult * _outputW / _screenW, shakeYOffset * _vScaleMult / _vScaleDiv * _outputH / _screenH);
 }
 
 void UpscaledGfxDriver::clearRect(const Common::Rect &r) const {
-	Common::Rect r2(r.left * _hScaleMult, r.top * _vScaleMult / _vScaleDiv, r.right * _hScaleMult, r.bottom * _vScaleMult / _vScaleDiv);
+	Common::Rect r2(r.left * _hScaleMult * _outputW / _screenW, r.top * _vScaleMult / _vScaleDiv * _outputH / _screenH,
+		r.right * _hScaleMult * _outputW / _screenW, r.bottom * _vScaleMult / _vScaleDiv * _outputH / _screenH);
 	GfxDriver::clearRect(r2);
 }
 
@@ -152,6 +236,11 @@ void UpscaledGfxDriver::drawTextFontGlyph(const byte *src, int pitch, int hiresD
 }
 
 void UpscaledGfxDriver::updateScreen(int destX, int destY, int w, int h, const PaletteMod *palMods, const byte *palModMapping) {
+	if (isResampled()) {
+		updateScreenResampled(destX, destY, w, h);
+		return;
+	}
+
 	byte *buff = _compositeBuffer;
 	int pitch = w * _pixelSize;
 	byte *scb = _scaledBitmap + destY * _screenW * _srcPixelSize + destX * _srcPixelSize;

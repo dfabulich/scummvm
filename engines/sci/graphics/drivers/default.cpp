@@ -30,7 +30,7 @@
 namespace Sci {
 
 GfxDefaultDriver::GfxDefaultDriver(uint16 screenWidth, uint16 screenHeight, bool isSCI0, bool rgbRendering) : GfxDriver(screenWidth, screenHeight, 0), _cursorUsesScreenPalette(true),  _colorConv(nullptr), _colorConvMod(nullptr),
-	_srcPixelSize(1), _requestRGBMode(rgbRendering), _compositeBuffer(nullptr), _currentBitmap(nullptr), _internalPalette(nullptr), _currentPalette(nullptr), _virtualW(screenWidth), _virtualH(screenHeight), _alwaysCreateBmpBuffer(!isSCI0) {
+	_srcPixelSize(1), _requestRGBMode(rgbRendering), _compositeBuffer(nullptr), _currentBitmap(nullptr), _internalPalette(nullptr), _currentPalette(nullptr), _virtualW(screenWidth), _virtualH(screenHeight), _outputW(screenWidth), _outputH(screenHeight), _alwaysCreateBmpBuffer(!isSCI0) {
 	switch (g_sci->getResMan()->getViewType()) {
 	case kViewEga:
 		_numColors = 16;	// QFG PC-98 with 8 colors also reports 16 here
@@ -105,9 +105,9 @@ bool GfxDefaultDriver::initScreen(const Graphics::PixelFormat *srcRGBFormat) {
 		Common::List<Graphics::PixelFormat> formatList;
 		formatList.push_back(*srcRGBFormat);
 		formatList.push_back(format8bt);
-		initGraphics(_screenW, _screenH, formatList);
+		initGraphics(_outputW, _outputH, formatList);
 	} else {
-		initGraphics(_screenW, _screenH, srcRGBFormat ? srcRGBFormat : (_requestRGBMode ? nullptr : &format8bt));
+		initGraphics(_outputW, _outputH, srcRGBFormat ? srcRGBFormat : (_requestRGBMode ? nullptr : &format8bt));
 	}
 
 	Graphics::PixelFormat format = g_system->getScreenFormat();
@@ -131,7 +131,7 @@ bool GfxDefaultDriver::initScreen(const Graphics::PixelFormat *srcRGBFormat) {
 		warning("GfxDefaultDriver::initScreen(): RGB rendering not available in this ScummVM build");
 
 	if (_pixelSize != _srcPixelSize) {
-		uint32 bufferSize = _screenW * _screenH * _pixelSize;
+		uint32 bufferSize = _outputW * _outputH * _pixelSize;
 		_compositeBuffer = new byte[bufferSize]();
 		assert(_compositeBuffer);
 	}
