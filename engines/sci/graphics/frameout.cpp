@@ -1349,6 +1349,22 @@ void GfxFrameout::adjustMousePositionForHiResLayout(const Common::Point &screenP
 	}
 }
 
+int16 GfxFrameout::getHiResLayoutScreenY(const int16 scriptY) const {
+	if (!_uniformPixels)
+		return -1;
+
+	int16 screenY = -1;
+	for (PlaneList::size_type i = 0; i < _planes.size(); ++i) {
+		const Plane &plane = *_planes[i];
+		if (plane._priority >= 0 && plane.hasHiResLayout() && scriptY > plane._gameRect.top) {
+			const int16 y = plane._planeRect.top + ((MIN(scriptY, plane._gameRect.bottom) - plane._gameRect.top) * Ratio(480, _scriptHeight)).toInt();
+			screenY = MAX(screenY, MIN(y, plane._planeRect.bottom));
+		}
+	}
+
+	return screenY;
+}
+
 void GfxFrameout::placeOverTalkers(Plane &plane) const {
 	for (PlaneList::size_type i = 0; i < _planes.size(); ++i) {
 		const Plane &talkerPlane = *_planes[i];

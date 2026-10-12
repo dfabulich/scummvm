@@ -440,6 +440,13 @@ public:
 	void adjustMousePositionForHiResLayout(const Common::Point &screenPos, Common::Point &scriptPos) const;
 
 	/**
+	 * Converts a script y-coordinate to a screen y-coordinate using the
+	 * topmost visible plane whose contents are laid out at the hires scale,
+	 * or returns -1 if there is no such plane covering that coordinate.
+	 */
+	int16 getHiResLayoutScreenY(const int16 scriptY) const;
+
+	/**
 	 * Moves a plane that would cover a talker's hires bust to the position
 	 * it has at the original hires scale, which keeps it clear of the busts
 	 * since they are drawn at their native size.
