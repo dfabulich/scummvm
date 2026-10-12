@@ -103,6 +103,21 @@ reg_t ScreenItem::findTalker(SegManager *segMan, const reg_t object) {
 	return NULL_REG;
 }
 
+int16 ScreenItem::getTalkerBustTop(const Plane &plane, const CelObj &bust, const int16 talkerY) {
+	const int16 scriptHeight = g_sci->_gfxFrameout->getScriptHeight();
+	const int16 height = plane._planeRect.height();
+	const int16 top = (talkerY * Ratio(g_sci->_gfxFrameout->getScreenHeight(), scriptHeight)).toInt() - bust._origin.y;
+	if (top >= 0 && top + bust._height <= height)
+		return top;
+
+	const int16 originalTop = (talkerY * Ratio(480, scriptHeight)).toInt() - bust._origin.y;
+	const int16 originalHeight = (plane._gameRect.height() * Ratio(480, scriptHeight)).toInt();
+	if (originalHeight <= bust._height || height <= bust._height)
+		return top;
+	// Some busts extend outside the plane even at the original scale
+	return CLIP<int16>(originalTop * (height - bust._height) / (originalHeight - bust._height), 0, height - bust._height);
+}
+
 ScreenItem::ScreenItem(const reg_t plane, const CelInfo32 &celInfo) :
 _creationId(_nextCreationId++),
 _plane(plane),
@@ -416,19 +431,23 @@ void ScreenItem::calcRects(const Plane &plane) {
 				_scaledPosition.x = (_position.x * scriptToScreenX).toInt() - originX;
 				_scaledPosition.y = (_position.y * scriptToScreenY).toInt() - originY;
 
-				// Talker parts are drawn at their native size, so they keep
-				// their original offsets from the bust
-				if (celObj._yResolution >= screenHeight && celObj._height < screenHeight && !_talker.isNull()) {
+				// Busts are drawn at their native size, so busts that would
+				// extend below the plane are moved up to stay inside it. Busts
+				// are created before their talkers, so they are recognized by
+				// being the first cel of a hires view. Talker parts keep their
+				// original offsets from the bust.
+				const bool isBust = _celInfo.type == kCelTypeView && _celInfo.loopNo == 0 && _celInfo.celNo == 0 && scaleY.isOne();
+				if (celObj._yResolution >= screenHeight && celObj._height < screenHeight && (isBust || !_talker.isNull())) {
 					// Offsets are taken from the original screen, where cels with
 					// a lower resolution were scaled up
 					const Ratio originalScale(480, scriptHeight);
 					const Ratio celScale(480, celObj._yResolution);
-					const int16 talkerY = readSelectorValue(g_sci->getEngineState()->_segMan, _talker, SELECTOR(y));
+					const int16 talkerY = _talker.isNull() ? _position.y : readSelectorValue(g_sci->getEngineState()->_segMan, _talker, SELECTOR(y));
 					const CelObjView bust(_celInfo.resourceId, 0, 0);
 					const int16 bustTop = (talkerY * originalScale).toInt() - (bust._origin.y * celScale).toInt();
 					const int16 top = (_position.y * originalScale).toInt() - (celObj._origin.y * celScale).toInt();
 					const int16 offset = ((top - bustTop) * 2 * celObj._yResolution + 480) / (2 * 480);
-					_scaledPosition.y = (talkerY * scriptToScreenY).toInt() - bust._origin.y + offset;
+					_scaledPosition.y = getTalkerBustTop(plane, bust, talkerY) + offset;
 				}
 			}
 
