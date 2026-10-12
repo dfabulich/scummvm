@@ -3677,6 +3677,32 @@ static const uint16 gk1CazanouxPathfindingPatch[] = {
 	PATCH_END
 };
 
+// On day 9 in the underground temple (room 720), the first time Gabriel tries
+//  to lift an iron bar off the wall by himself, his animation is drawn for the
+//  left-hand bar. When the player clicks the right-hand bar, Gabriel walks to
+//  that bar's approach point instead, so the animation is misaligned and a
+//  duplicate bar appears. The rest of the scene always moves the left-hand bar
+//  first, no matter which bar was clicked.
+//
+// We fix this by giving bar2 the same approach point as bar.
+//
+// Applies to: At least English PC CD
+// Responsible method: heap in script 720
+static const uint16 gk1IronBarSignature[] = {
+	SIG_MAGICDWORD,                 // bar2
+	SIG_UINT16(0x008d),             // approachX = 141
+	SIG_UINT16(0x007c),             // approachY = 124
+	SIG_ADDTOOFFSET(+6),
+	SIG_UINT16(0x0095),             // x = 149
+	SIG_UINT16(0x0050),             // y = 80
+	SIG_END
+};
+
+static const uint16 gk1IronBarPatch[] = {
+	PATCH_UINT16(0x0081),           // approachX = 129
+	PATCH_END
+};
+
 // GK1 english pc floppy locks up on day 10 in the honfour (room 800) when
 //  using the keycard on an unlocked door's keypad. This is due to mistakenly
 //  calling handsOff instead of handsOn. Sierra fixed this in floppy patch 1.0a
@@ -4878,6 +4904,7 @@ static const SciScriptPatcherEntry gk1Signatures[] = {
 	{  true,   710, "fix day 9 vine swing speech playing",         1, gk1Day9VineSwingSignature,        gk1Day9VineSwingPatch },
 	{  true,   710, "fix day 9 mummy animation (floppy)",          1, gk1MummyAnimateFloppySignature,   gk1MummyAnimateFloppyPatch },
 	{  true,   710, "fix day 9 mummy animation (cd)",              1, gk1MummyAnimateCDSignature,       gk1MummyAnimateCDPatch },
+	{  true,   720, "fix day 9 iron bar animation",                1, gk1IronBarSignature,              gk1IronBarPatch },
 	{  true,   800, "fix day 10 honfour unlock door lockup",       1, gk1HonfourUnlockDoorSignature,    gk1HonfourUnlockDoorPatch },
 	{  true,    91, "italian translation compatibility",           3, gk1ItalianTranslationSignature,   gk1ItalianTranslationPatch },
 	{  true,   815, "italian translation compatibility",           1, gk1ItalianTranslationSignature,   gk1ItalianTranslationPatch },
