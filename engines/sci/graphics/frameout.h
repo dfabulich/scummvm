@@ -57,6 +57,12 @@ public:
 	inline bool isHiRes() const { return _isHiRes; }
 
 	/**
+	 * Returns true if lowres graphics are drawn at exactly double size on a
+	 * 640x400 screen, with hires graphics drawn at their native pixel size.
+	 */
+	inline bool hasUniformPixels() const { return _uniformPixels; }
+
+	/**
 	 * Gets the x-resolution used by game scripts.
 	 */
 	inline int16 getScriptWidth() const { return _scriptWidth; }
@@ -86,6 +92,8 @@ private:
 	 * Whether or not the game should render at a resolution above 320x240.
 	 */
 	bool _isHiRes;
+
+	bool _uniformPixels;
 
 	/**
 	 * The resolution used by game scripts.

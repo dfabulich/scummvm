@@ -61,6 +61,7 @@ namespace Sci {
 
 GfxFrameout::GfxFrameout(SegManager *segMan, GfxPalette32 *palette, GfxTransitions32 *transitions, GfxCursor32 *cursor) :
 	_isHiRes(detectHiRes()),
+	_uniformPixels(_isHiRes && g_sci->getGameId() == GID_GK1 && ConfMan.hasKey("hires_uniform_pixels") && ConfMan.getBool("hires_uniform_pixels")),
 	_palette(palette),
 	_cursor(cursor),
 	_segMan(segMan),
@@ -74,12 +75,21 @@ GfxFrameout::GfxFrameout(SegManager *segMan, GfxPalette32 *palette, GfxTransitio
 
 	if (g_sci->getGameId() == GID_PHANTASMAGORIA) {
 		_currentBuffer.create(630, 450, Graphics::PixelFormat::createFormatCLUT8());
+	} else if (_uniformPixels) {
+		_currentBuffer.create(640, 400, Graphics::PixelFormat::createFormatCLUT8());
 	} else if (_isHiRes) {
 		_currentBuffer.create(640, 480, Graphics::PixelFormat::createFormatCLUT8());
 	} else {
 		_currentBuffer.create(320, 200, Graphics::PixelFormat::createFormatCLUT8());
 	}
 	initGraphics(_currentBuffer.w, _currentBuffer.h);
+
+	// The hires graphics have square pixels, so a 640x400 screen must not get corrected to 4:3
+	if (_uniformPixels && g_system->getFeatureState(OSystem::kFeatureAspectRatioCorrection)) {
+		g_system->beginGFXTransaction();
+		g_system->setFeatureState(OSystem::kFeatureAspectRatioCorrection, false);
+		g_system->endGFXTransaction();
+	}
 
 	switch (g_sci->getGameId()) {
 	case GID_HOYLE5:
@@ -1323,7 +1333,9 @@ bool GfxFrameout::isOnMe(const ScreenItem &screenItem, const Plane &plane, const
 		scaledPosition.y -= screenItem._scaledPosition.y;
 
 		if (getSciVersion() < SCI_VERSION_2_1_LATE) {
-			mulru(scaledPosition, Ratio(celObj._xResolution, _currentBuffer.w), Ratio(celObj._yResolution, _currentBuffer.h));
+			// In uniform pixels mode, hires cels are drawn at their native size
+			const bool nativeHeight = _uniformPixels && celObj._yResolution > _currentBuffer.h;
+			mulru(scaledPosition, Ratio(celObj._xResolution, _currentBuffer.w), Ratio(nativeHeight ? _currentBuffer.h : celObj._yResolution, _currentBuffer.h));
 		}
 
 		if (screenItem._scale.signal != kScaleSignalNone && screenItem._scale.x && screenItem._scale.y) {
