@@ -1333,8 +1333,8 @@ bool GfxFrameout::isOnMe(const ScreenItem &screenItem, const Plane &plane, const
 		scaledPosition.y -= screenItem._scaledPosition.y;
 
 		if (getSciVersion() < SCI_VERSION_2_1_LATE) {
-			// In uniform pixels mode, hires cels are drawn at their native size
-			const bool nativeHeight = _uniformPixels && celObj._yResolution > _currentBuffer.h;
+			// In uniform pixels mode, hires cels shorter than the screen are drawn at their native size
+			const bool nativeHeight = _uniformPixels && celObj._yResolution > _currentBuffer.h && celObj._height < _currentBuffer.h;
 			mulru(scaledPosition, Ratio(celObj._xResolution, _currentBuffer.w), Ratio(nativeHeight ? _currentBuffer.h : celObj._yResolution, _currentBuffer.h));
 		}
 

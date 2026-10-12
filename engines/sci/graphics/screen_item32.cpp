@@ -286,8 +286,9 @@ void ScreenItem::calcRects(const Plane &plane) {
 		if (getSciVersion() < SCI_VERSION_2_1_LATE) {
 			celToScreenX = Ratio(screenWidth, celObj._xResolution);
 			celToScreenY = Ratio(screenHeight, celObj._yResolution);
-			// In uniform pixels mode, hires cels are drawn at their native size
-			if (g_sci->_gfxFrameout->hasUniformPixels() && celObj._yResolution > screenHeight)
+			// Full screen hires cels can't fit at their native size, so they
+			// keep the original layout and get scaled down instead
+			if (g_sci->_gfxFrameout->hasUniformPixels() && celObj._yResolution > screenHeight && celObj._height < screenHeight)
 				celToScreenY = celToScreenX;
 		}
 
