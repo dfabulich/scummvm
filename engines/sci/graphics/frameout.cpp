@@ -1313,6 +1313,42 @@ reg_t GfxFrameout::kernelIsOnMe(const reg_t object, const Common::Point &positio
 	return make_reg(0, isOnMe(*screenItem, *plane, position, checkPixel));
 }
 
+void GfxFrameout::placeOverTalkers(Plane &plane) const {
+	for (PlaneList::size_type i = 0; i < _planes.size(); ++i) {
+		const Plane &talkerPlane = *_planes[i];
+		if (&talkerPlane == &plane || talkerPlane._object == plane._object || talkerPlane._priority < 0 || talkerPlane._priority >= plane._priority)
+			continue;
+
+		bool hasTalker = false;
+		bool coversBust = false;
+		for (ScreenItemList::size_type j = 0; j < talkerPlane._screenItemList.size(); ++j) {
+			const ScreenItem *item = talkerPlane._screenItemList[j];
+			if (item == nullptr || item->_deleted)
+				continue;
+			if (!item->_talker.isNull())
+				hasTalker = true;
+			if (item->_celInfo.type == kCelTypeView && item->_screenRect.intersects(plane._planeRect) &&
+				item->getCelObj()._yResolution >= _currentBuffer.h)
+				coversBust = true;
+		}
+
+		if (!hasTalker || !coversBust)
+			continue;
+
+		const int16 height = plane._planeRect.height();
+		int16 top = talkerPlane._planeRect.top + ((plane._gameRect.top - talkerPlane._gameRect.top) * Ratio(480, _scriptHeight)).toInt();
+		top = MIN<int16>(top, talkerPlane._planeRect.bottom - height);
+		// Low-res cels can only be drawn at whole script pixels
+		const int16 scriptDelta = ((top - plane._planeRect.top) * Ratio(_scriptHeight, _currentBuffer.h)).toInt();
+		top = plane._planeRect.top + (scriptDelta * Ratio(_currentBuffer.h, _scriptHeight)).toInt();
+		if (top > plane._planeRect.top) {
+			plane._planeRect.top = top;
+			plane._planeRect.bottom = top + height;
+		}
+		return;
+	}
+}
+
 bool GfxFrameout::isOnMe(const ScreenItem &screenItem, const Plane &plane, const Common::Point &position, const bool checkPixel) const {
 
 	Common::Point scaledPosition(position);

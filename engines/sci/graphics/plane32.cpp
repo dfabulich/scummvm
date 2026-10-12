@@ -61,8 +61,8 @@ _updated(0),
 _deleted(0),
 _moved(0),
 _gameRect(gameRect) {
-	convertGameRectToPlaneRect();
 	_priority = MAX(10000, g_sci->_gfxFrameout->getPlanes().getTopPlanePriority() + 1);
+	convertGameRectToPlaneRect();
 	setType();
 	_screenRect = _planeRect;
 }
@@ -92,10 +92,10 @@ _moved(0) {
 		_gameRect.right = readSelectorValue(segMan, object, SELECTOR(inRight)) + 1;
 		_gameRect.bottom = readSelectorValue(segMan, object, SELECTOR(inBottom)) + 1;
 	}
+	_priority = readSelectorValue(segMan, object, SELECTOR(priority));
 	convertGameRectToPlaneRect();
 
 	_back = readSelectorValue(segMan, object, SELECTOR(back));
-	_priority = readSelectorValue(segMan, object, SELECTOR(priority));
 	_pictureId = readSelectorValue(segMan, object, SELECTOR(picture));
 	setType();
 
@@ -147,6 +147,9 @@ void Plane::convertGameRectToPlaneRect() {
 
 	_planeRect = _gameRect;
 	mulru(_planeRect, ratioX, ratioY, 1);
+
+	if (g_sci->_gfxFrameout->hasUniformPixels())
+		g_sci->_gfxFrameout->placeOverTalkers(*this);
 }
 
 void Plane::printDebugInfo(Console *con) const {
@@ -843,9 +846,9 @@ void Plane::update(const reg_t object) {
 		_gameRect.right = readSelectorValue(segMan, object, SELECTOR(inRight)) + 1;
 		_gameRect.bottom = readSelectorValue(segMan, object, SELECTOR(inBottom)) + 1;
 	}
+	_priority = readSelectorValue(segMan, object, SELECTOR(priority));
 	convertGameRectToPlaneRect();
 
-	_priority = readSelectorValue(segMan, object, SELECTOR(priority));
 	GuiResourceId pictureId = readSelectorValue(segMan, object, SELECTOR(picture));
 	if (_pictureId != pictureId) {
 		_pictureId = pictureId;

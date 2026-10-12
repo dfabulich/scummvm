@@ -529,6 +529,16 @@ void ScreenItem::calcRects(const Plane &plane) {
 				mulru(_screenItemRect, celToScreenX, celToScreenY, 1);
 			}
 
+			if (g_sci->_gfxFrameout->hasUniformPixels()) {
+				// Planes may be placed lower than their game rect, see
+				// GfxFrameout::placeOverTalkers
+				Common::Rect gameRect(plane._gameRect);
+				mulru(gameRect, Ratio(screenWidth, scriptWidth), Ratio(screenHeight, scriptHeight), 1);
+				const int16 deltaY = plane._planeRect.top - gameRect.top;
+				_scaledPosition.y += deltaY;
+				_screenItemRect.translate(0, deltaY);
+			}
+
 			_ratioX = scaleX * celToScreenX;
 			_ratioY = scaleY * celToScreenY;
 		}
