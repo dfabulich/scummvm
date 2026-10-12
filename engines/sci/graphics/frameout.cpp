@@ -245,6 +245,27 @@ void GfxFrameout::kernelAddScreenItem(const reg_t object) {
 		screenItem = new ScreenItem(object);
 		plane->_screenItemList.add(screenItem);
 	}
+
+	// Interface windows are hires icons positioned for the original screen
+	// height, so their planes are laid out at the hires scale
+	if (_uniformPixels && !plane->hasHiResLayout() && isIconItem(object)) {
+		plane->setHiResLayout();
+	}
+}
+
+bool GfxFrameout::isIconItem(const reg_t object) const {
+	// Plain IconI objects such as the map locations are not interface windows
+	const Object *obj = _segMan->getObject(object);
+	const Object *classObj = obj ? _segMan->getObject(obj->getSuperClassSelector()) : nullptr;
+	for (reg_t super = classObj ? classObj->getSuperClassSelector() : NULL_REG; !super.isNull();) {
+		if (!strcmp(_segMan->getObjectName(super), "IconI"))
+			return true;
+		const Object *superObj = _segMan->getObject(super);
+		if (!superObj)
+			break;
+		super = superObj->getSuperClassSelector();
+	}
+	return false;
 }
 
 void GfxFrameout::kernelUpdateScreenItem(const reg_t object) {
@@ -1313,6 +1334,21 @@ reg_t GfxFrameout::kernelIsOnMe(const reg_t object, const Common::Point &positio
 	return make_reg(0, isOnMe(*screenItem, *plane, position, checkPixel));
 }
 
+void GfxFrameout::adjustMousePositionForHiResLayout(const Common::Point &screenPos, Common::Point &scriptPos) const {
+	if (!_uniformPixels)
+		return;
+
+	for (PlaneList::size_type i = _planes.size(); i > 0; --i) {
+		const Plane &plane = *_planes[i - 1];
+		if (plane._priority < 0 || !plane._planeRect.contains(screenPos))
+			continue;
+
+		if (plane.hasHiResLayout())
+			scriptPos.y = plane._gameRect.top + ((screenPos.y - plane._planeRect.top) * Ratio(_scriptHeight, 480)).toInt();
+		return;
+	}
+}
+
 void GfxFrameout::placeOverTalkers(Plane &plane) const {
 	for (PlaneList::size_type i = 0; i < _planes.size(); ++i) {
 		const Plane &talkerPlane = *_planes[i];
@@ -1352,7 +1388,7 @@ void GfxFrameout::placeOverTalkers(Plane &plane) const {
 bool GfxFrameout::isOnMe(const ScreenItem &screenItem, const Plane &plane, const Common::Point &position, const bool checkPixel) const {
 
 	Common::Point scaledPosition(position);
-	mulru(scaledPosition, Ratio(_currentBuffer.w, _scriptWidth), Ratio(_currentBuffer.h, _scriptHeight));
+	mulru(scaledPosition, Ratio(_currentBuffer.w, _scriptWidth), Ratio(plane.hasHiResLayout() ? 480 : _currentBuffer.h, _scriptHeight));
 	scaledPosition.x += plane._planeRect.left;
 	scaledPosition.y += plane._planeRect.top;
 

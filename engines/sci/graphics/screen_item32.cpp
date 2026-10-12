@@ -431,13 +431,16 @@ void ScreenItem::calcRects(const Plane &plane) {
 				_scaledPosition.x = (_position.x * scriptToScreenX).toInt() - originX;
 				_scaledPosition.y = (_position.y * scriptToScreenY).toInt() - originY;
 
+				if (plane.hasHiResLayout())
+					_scaledPosition.y = (_position.y * Ratio(celObj._yResolution, scriptHeight)).toInt() - originY;
+
 				// Busts are drawn at their native size, so busts that would
 				// extend below the plane are moved up to stay inside it. Busts
 				// are created before their talkers, so they are recognized by
 				// being the first cel of a hires view. Talker parts keep their
 				// original offsets from the bust.
 				const bool isBust = _celInfo.type == kCelTypeView && _celInfo.loopNo == 0 && _celInfo.celNo == 0 && scaleY.isOne();
-				if (celObj._yResolution >= screenHeight && celObj._height < screenHeight && (isBust || !_talker.isNull())) {
+				if (celObj._yResolution >= screenHeight && celObj._height < screenHeight && !plane.hasHiResLayout() && (isBust || !_talker.isNull())) {
 					// Offsets are taken from the original screen, where cels with
 					// a lower resolution were scaled up
 					const Ratio originalScale(480, scriptHeight);

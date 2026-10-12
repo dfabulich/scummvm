@@ -108,6 +108,7 @@ Plane::Plane(const Plane &other) :
 _creationId(other._creationId),
 _pictureId(other._pictureId),
 _mirrored(other._mirrored),
+_hiResLayout(other._hiResLayout),
 _type(other._type),
 _back(other._back),
 _object(other._object),
@@ -125,6 +126,7 @@ void Plane::operator=(const Plane &other) {
 	_pictureId = other._pictureId;
 	_type = other._type;
 	_mirrored = other._mirrored;
+	_hiResLayout = other._hiResLayout;
 	_priority = other._priority;
 	_back = other._back;
 	_screenRect = other._screenRect;
@@ -148,8 +150,23 @@ void Plane::convertGameRectToPlaneRect() {
 	_planeRect = _gameRect;
 	mulru(_planeRect, ratioX, ratioY, 1);
 
-	if (g_sci->_gfxFrameout->hasUniformPixels())
+	if (hasHiResLayout()) {
+		// The plane is as tall as its game rect at the hires scale
+		const int16 height = (_gameRect.height() * Ratio(480, scriptHeight)).toInt();
+		_planeRect.bottom = MIN<int16>(_planeRect.top + height, screenHeight);
+	} else if (g_sci->_gfxFrameout->hasUniformPixels()) {
 		g_sci->_gfxFrameout->placeOverTalkers(*this);
+	}
+}
+
+bool Plane::hasHiResLayout() const {
+	return _hiResLayout && g_sci->_gfxFrameout->hasUniformPixels();
+}
+
+void Plane::setHiResLayout() {
+	_hiResLayout = true;
+	convertGameRectToPlaneRect();
+	_screenRect = _planeRect;
 }
 
 void Plane::printDebugInfo(Console *con) const {

@@ -434,6 +434,12 @@ public:
 	reg_t kernelIsOnMe(const reg_t object, const Common::Point &position, const bool checkPixel) const;
 
 	/**
+	 * Corrects the script y-coordinate of the mouse when it is over a plane
+	 * whose contents are laid out at the hires scale.
+	 */
+	void adjustMousePositionForHiResLayout(const Common::Point &screenPos, Common::Point &scriptPos) const;
+
+	/**
 	 * Moves a plane that would cover a talker's hires bust to the position
 	 * it has at the original hires scale, which keeps it clear of the busts
 	 * since they are drawn at their native size.
@@ -441,6 +447,11 @@ public:
 	void placeOverTalkers(Plane &plane) const;
 
 private:
+	/**
+	 * Returns true if the given object is an icon (a subclass of IconI).
+	 */
+	bool isIconItem(const reg_t object) const;
+
 	void updateMousePositionForRendering() const {
 		// In SSCI, mouse events were received via hardware interrupt, so the
 		// mouse cursor would always get updated immediately when the user moved
