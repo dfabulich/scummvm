@@ -330,8 +330,14 @@ bool GfxCursor32::deviceMoved(Common::Point &position) {
 		position.x = _restrictedArea.right - 1;
 		restricted = true;
 	}
-	if (position.y < _restrictedArea.top) {
-		position.y = _restrictedArea.top;
+	int16 top = _restrictedArea.top;
+	if (!_restrictedAreaScript.isEmpty()) {
+		const int16 hiResTop = g_sci->_gfxFrameout->getHiResLayoutScreenTop(_restrictedAreaScript.top);
+		if (hiResTop >= 0)
+			top = MIN(top, hiResTop);
+	}
+	if (position.y < top) {
+		position.y = top;
 		restricted = true;
 	}
 	int16 bottom = _restrictedArea.bottom;

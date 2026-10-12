@@ -447,6 +447,14 @@ public:
 	int16 getHiResLayoutScreenY(const int16 scriptY) const;
 
 	/**
+	 * Converts a script y-coordinate to a screen y-coordinate using the
+	 * highest visible plane whose contents are laid out at the hires scale
+	 * and whose game rect contains that coordinate, or returns -1 if there is
+	 * no such plane.
+	 */
+	int16 getHiResLayoutScreenTop(const int16 scriptY) const;
+
+	/**
 	 * Moves a plane that would cover a talker's hires bust to the position
 	 * it has at the original hires scale, which keeps it clear of the busts
 	 * since they are drawn at their native size.

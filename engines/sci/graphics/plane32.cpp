@@ -151,8 +151,10 @@ void Plane::convertGameRectToPlaneRect() {
 	mulru(_planeRect, ratioX, ratioY, 1);
 
 	if (hasHiResLayout()) {
-		// The plane is as tall as its game rect at the hires scale
+		// The plane is taller than its game rect, so it is moved up to end
+		// where its game rect does, leaving the space below it free for text
 		const int16 height = (_gameRect.height() * Ratio(480, scriptHeight)).toInt();
+		_planeRect.top = MAX<int16>(0, _planeRect.bottom - height);
 		_planeRect.bottom = MIN<int16>(_planeRect.top + height, screenHeight);
 	} else if (g_sci->_gfxFrameout->hasUniformPixels()) {
 		g_sci->_gfxFrameout->placeOverTalkers(*this);
