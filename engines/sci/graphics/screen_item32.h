@@ -215,6 +215,13 @@ public:
 	bool _drawBlackLines;
 
 	/**
+	 * The Talker that this screen item's object belongs to as its eyes or
+	 * mouth, if any. Only looked up in uniform pixels mode, where hires
+	 * talkers are laid out to fit the plane.
+	 */
+	reg_t _talker = NULL_REG;
+
+	/**
 	 * Initialises static Plane members.
 	 */
 	static void init();
@@ -324,6 +331,12 @@ public:
 	 * @note This method was called Update in SSCI.
 	 */
 	void calcRects(const Plane &plane);
+
+	/**
+	 * Returns the Talker object that the given object is a part of, or
+	 * NULL_REG.
+	 */
+	static reg_t findTalker(SegManager *segMan, const reg_t object);
 
 	/**
 	 * Retrieves the corresponding cel object for this screen item. If a cel

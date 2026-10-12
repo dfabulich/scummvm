@@ -49,6 +49,58 @@ _drawBlackLines(false) {
 
 	setFromObject(segMan, object, true, true);
 	_plane = readSelector(segMan, object, SELECTOR(plane));
+
+	if (g_sci->_gfxFrameout->hasUniformPixels())
+		_talker = findTalker(segMan, object);
+}
+
+reg_t ScreenItem::findTalker(SegManager *segMan, const reg_t object) {
+	const reg_t talkerClass = segMan->findObjectByName("Talker");
+	if (talkerClass.isNull())
+		return NULL_REG;
+
+	const Common::Array<SegmentObj *> &heap = segMan->getSegments();
+	for (uint i = 0; i < heap.size(); ++i) {
+		if (!heap[i])
+			continue;
+
+		Common::Array<reg_t> candidates;
+		if (heap[i]->getType() == SEG_TYPE_SCRIPT) {
+			const ObjMap &objects = static_cast<const Script *>(heap[i])->getObjectMap();
+			for (ObjMap::const_iterator it = objects.begin(); it != objects.end(); ++it)
+				candidates.push_back(make_reg(i, it->_value.getPos().getOffset()));
+		} else if (heap[i]->getType() == SEG_TYPE_CLONES) {
+			const CloneTable *clones = static_cast<const CloneTable *>(heap[i]);
+			for (uint j = 0; j < clones->size(); ++j) {
+				if (clones->isValidEntry(j))
+					candidates.push_back(make_reg(i, j));
+			}
+		}
+
+		for (uint j = 0; j < candidates.size(); ++j) {
+			const Object *candidate = segMan->getObject(candidates[j]);
+			if (!candidate || candidates[j] == object)
+				continue;
+
+			bool isTalker = false;
+			for (reg_t super = candidate->getSuperClassSelector(); !super.isNull() && !isTalker;) {
+				isTalker = (super == talkerClass);
+				const Object *superObj = segMan->getObject(super);
+				if (!superObj)
+					break;
+				super = superObj->getSuperClassSelector();
+			}
+			if (!isTalker || candidate->isClass())
+				continue;
+
+			for (uint k = 0; k < candidate->getVarCount(); ++k) {
+				if (candidate->getVariable(k) == object)
+					return candidates[j];
+			}
+		}
+	}
+
+	return NULL_REG;
 }
 
 ScreenItem::ScreenItem(const reg_t plane, const CelInfo32 &celInfo) :
@@ -114,7 +166,8 @@ _object(other._object),
 _mirrorX(other._mirrorX),
 _scaledPosition(other._scaledPosition),
 _screenRect(other._screenRect),
-_drawBlackLines(other._drawBlackLines) {
+_drawBlackLines(other._drawBlackLines),
+_talker(other._talker) {
 	if (other._useInsetRect) {
 		_insetRect = other._insetRect;
 	}
@@ -145,6 +198,7 @@ void ScreenItem::operator=(const ScreenItem &other) {
 	_scale = other._scale;
 	_scaledPosition = other._scaledPosition;
 	_drawBlackLines = other._drawBlackLines;
+	_talker = other._talker;
 }
 
 void ScreenItem::init() {
@@ -361,6 +415,21 @@ void ScreenItem::calcRects(const Plane &plane) {
 			} else {
 				_scaledPosition.x = (_position.x * scriptToScreenX).toInt() - originX;
 				_scaledPosition.y = (_position.y * scriptToScreenY).toInt() - originY;
+
+				// Talker parts are drawn at their native size, so they keep
+				// their original offsets from the bust
+				if (celObj._yResolution >= screenHeight && celObj._height < screenHeight && !_talker.isNull()) {
+					// Offsets are taken from the original screen, where cels with
+					// a lower resolution were scaled up
+					const Ratio originalScale(480, scriptHeight);
+					const Ratio celScale(480, celObj._yResolution);
+					const int16 talkerY = readSelectorValue(g_sci->getEngineState()->_segMan, _talker, SELECTOR(y));
+					const CelObjView bust(_celInfo.resourceId, 0, 0);
+					const int16 bustTop = (talkerY * originalScale).toInt() - (bust._origin.y * celScale).toInt();
+					const int16 top = (_position.y * originalScale).toInt() - (celObj._origin.y * celScale).toInt();
+					const int16 offset = ((top - bustTop) * 2 * celObj._yResolution + 480) / (2 * 480);
+					_scaledPosition.y = (talkerY * scriptToScreenY).toInt() - bust._origin.y + offset;
+				}
 			}
 
 			_screenItemRect.translate(_scaledPosition.x, _scaledPosition.y);
