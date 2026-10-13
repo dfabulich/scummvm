@@ -49,6 +49,84 @@ _drawBlackLines(false) {
 
 	setFromObject(segMan, object, true, true);
 	_plane = readSelector(segMan, object, SELECTOR(plane));
+
+	if (g_sci->_gfxFrameout->hasUniformPixels())
+		_talker = findTalker(segMan, object);
+}
+
+reg_t ScreenItem::findTalker(SegManager *segMan, const reg_t object) {
+	const reg_t talkerClass = segMan->findObjectByName("Talker");
+	if (talkerClass.isNull())
+		return NULL_REG;
+
+	const Common::Array<SegmentObj *> &heap = segMan->getSegments();
+	for (uint i = 0; i < heap.size(); ++i) {
+		if (!heap[i])
+			continue;
+
+		Common::Array<reg_t> candidates;
+		if (heap[i]->getType() == SEG_TYPE_SCRIPT) {
+			const ObjMap &objects = static_cast<const Script *>(heap[i])->getObjectMap();
+			for (ObjMap::const_iterator it = objects.begin(); it != objects.end(); ++it)
+				candidates.push_back(make_reg(i, it->_value.getPos().getOffset()));
+		} else if (heap[i]->getType() == SEG_TYPE_CLONES) {
+			const CloneTable *clones = static_cast<const CloneTable *>(heap[i]);
+			for (uint j = 0; j < clones->size(); ++j) {
+				if (clones->isValidEntry(j))
+					candidates.push_back(make_reg(i, j));
+			}
+		}
+
+		for (uint j = 0; j < candidates.size(); ++j) {
+			const Object *candidate = segMan->getObject(candidates[j]);
+			if (!candidate || candidates[j] == object)
+				continue;
+
+			bool isTalker = false;
+			for (reg_t super = candidate->getSuperClassSelector(); !super.isNull() && !isTalker;) {
+				isTalker = (super == talkerClass);
+				const Object *superObj = segMan->getObject(super);
+				if (!superObj)
+					break;
+				super = superObj->getSuperClassSelector();
+			}
+			if (!isTalker || candidate->isClass())
+				continue;
+
+			for (uint k = 0; k < candidate->getVarCount(); ++k) {
+				if (candidate->getVariable(k) == object)
+					return candidates[j];
+			}
+		}
+	}
+
+	return NULL_REG;
+}
+
+int16 ScreenItem::getTalkerBustTop(const Plane &plane, const CelObj &bust, const int16 talkerY) {
+	const int16 scriptHeight = g_sci->_gfxFrameout->getScriptHeight();
+	const int16 height = plane._planeRect.height();
+	const int16 top = (talkerY * Ratio(g_sci->_gfxFrameout->getScreenHeight(), scriptHeight)).toInt() - bust._origin.y;
+	if (top >= 0 && top + bust._height <= height)
+		return top;
+
+	const int16 originalTop = (talkerY * Ratio(480, scriptHeight)).toInt() - bust._origin.y;
+	const int16 originalHeight = (plane._gameRect.height() * Ratio(480, scriptHeight)).toInt();
+	if (originalHeight <= bust._height || height <= bust._height)
+		return top;
+	// Some busts extend outside the plane even at the original scale
+	return CLIP<int16>(originalTop * (height - bust._height) / (originalHeight - bust._height), 0, height - bust._height);
+}
+
+int16 ScreenItem::getGK1CreditsCropTop(const CelObj &celObj) {
+	// The DOS hires credits are full screen cels that would be squashed to
+	// fit, so they are cropped instead. Each crop keeps all the names and
+	// cuts as little of the artwork as possible.
+	static const int16 cropTops[] = { 52, 60, 57, 38, 92, 53, 51, 39, 47, 51, 81, 96, 99 };
+	const CelInfo32 &info = celObj._info;
+	if (!g_sci->_gfxFrameout->hasUniformPixels() || info.type != kCelTypeView || info.resourceId < 10600 || info.resourceId > 10612 || celObj._height != 480)
+		return -1;
+	return cropTops[info.resourceId - 10600];
 }
 
 ScreenItem::ScreenItem(const reg_t plane, const CelInfo32 &celInfo) :
@@ -114,7 +192,8 @@ _object(other._object),
 _mirrorX(other._mirrorX),
 _scaledPosition(other._scaledPosition),
 _screenRect(other._screenRect),
-_drawBlackLines(other._drawBlackLines) {
+_drawBlackLines(other._drawBlackLines),
+_talker(other._talker) {
 	if (other._useInsetRect) {
 		_insetRect = other._insetRect;
 	}
@@ -145,6 +224,7 @@ void ScreenItem::operator=(const ScreenItem &other) {
 	_scale = other._scale;
 	_scaledPosition = other._scaledPosition;
 	_drawBlackLines = other._drawBlackLines;
+	_talker = other._talker;
 }
 
 void ScreenItem::init() {
@@ -286,6 +366,10 @@ void ScreenItem::calcRects(const Plane &plane) {
 		if (getSciVersion() < SCI_VERSION_2_1_LATE) {
 			celToScreenX = Ratio(screenWidth, celObj._xResolution);
 			celToScreenY = Ratio(screenHeight, celObj._yResolution);
+			// Full screen hires cels can't fit at their native size, so they
+			// keep the original layout and get scaled down instead
+			if (g_sci->_gfxFrameout->hasUniformPixels() && celObj._yResolution > screenHeight && (celObj._height < screenHeight || getGK1CreditsCropTop(celObj) >= 0))
+				celToScreenY = celToScreenX;
 		}
 
 		// Cel may use a coordinate system that is not the same size as the
@@ -357,6 +441,32 @@ void ScreenItem::calcRects(const Plane &plane) {
 			} else {
 				_scaledPosition.x = (_position.x * scriptToScreenX).toInt() - originX;
 				_scaledPosition.y = (_position.y * scriptToScreenY).toInt() - originY;
+
+				if (plane.hasHiResLayout())
+					_scaledPosition.y = (_position.y * Ratio(celObj._yResolution, scriptHeight)).toInt() - originY;
+
+				// Busts are drawn at their native size, so busts that would
+				// extend below the plane are moved up to stay inside it. Busts
+				// are created before their talkers, so they are recognized by
+				// being the first cel of a hires view. Talker parts keep their
+				// original offsets from the bust.
+				const bool isBust = _celInfo.type == kCelTypeView && _celInfo.loopNo == 0 && _celInfo.celNo == 0 && scaleY.isOne();
+				if (celObj._yResolution >= screenHeight && celObj._height < screenHeight && !plane.hasHiResLayout() && (isBust || !_talker.isNull())) {
+					// Offsets are taken from the original screen, where cels with
+					// a lower resolution were scaled up
+					const Ratio originalScale(480, scriptHeight);
+					const Ratio celScale(480, celObj._yResolution);
+					const int16 talkerY = _talker.isNull() ? _position.y : readSelectorValue(g_sci->getEngineState()->_segMan, _talker, SELECTOR(y));
+					const CelObjView bust(_celInfo.resourceId, 0, 0);
+					const int16 bustTop = (talkerY * originalScale).toInt() - (bust._origin.y * celScale).toInt();
+					const int16 top = (_position.y * originalScale).toInt() - (celObj._origin.y * celScale).toInt();
+					const int16 offset = ((top - bustTop) * 2 * celObj._yResolution + 480) / (2 * 480);
+					_scaledPosition.y = getTalkerBustTop(plane, bust, talkerY) + offset;
+				}
+
+				const int16 cropTop = getGK1CreditsCropTop(celObj);
+				if (cropTop >= 0 && celToScreenY.isOne())
+					_scaledPosition.y = -cropTop;
 			}
 
 			_screenItemRect.translate(_scaledPosition.x, _scaledPosition.y);
@@ -435,6 +545,16 @@ void ScreenItem::calcRects(const Plane &plane) {
 			if (!celToScreenX.isOne() || !celToScreenY.isOne()) {
 				mulru(_scaledPosition, celToScreenX, celToScreenY);
 				mulru(_screenItemRect, celToScreenX, celToScreenY, 1);
+			}
+
+			if (g_sci->_gfxFrameout->hasUniformPixels()) {
+				// Planes may be placed lower than their game rect, see
+				// GfxFrameout::placeOverTalkers
+				Common::Rect gameRect(plane._gameRect);
+				mulru(gameRect, Ratio(screenWidth, scriptWidth), Ratio(screenHeight, scriptHeight), 1);
+				const int16 deltaY = plane._planeRect.top - gameRect.top;
+				_scaledPosition.y += deltaY;
+				_screenItemRect.translate(0, deltaY);
 			}
 
 			_ratioX = scaleX * celToScreenX;

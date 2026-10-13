@@ -181,6 +181,12 @@ private:
 	Common::Rect _restrictedArea;
 
 	/**
+	 * The area within which the cursor is allowed to move, in script
+	 * coordinates, or an empty rect if the area was not set by a script.
+	 */
+	Common::Rect _restrictedAreaScript;
+
+	/**
 	 * Indicates whether or not the cursor needs to be repainted on the output
 	 * buffer due to a change of graphics in the area underneath the cursor.
 	 */

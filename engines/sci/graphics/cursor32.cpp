@@ -156,6 +156,7 @@ void GfxCursor32::show() {
 
 void GfxCursor32::setRestrictedArea(const Common::Rect &rect) {
 	_restrictedArea = rect;
+	_restrictedAreaScript = rect;
 
 	const int16 screenWidth = g_sci->_gfxFrameout->getScreenWidth();
 	const int16 screenHeight = g_sci->_gfxFrameout->getScreenHeight();
@@ -190,6 +191,7 @@ void GfxCursor32::setRestrictedArea(const Common::Rect &rect) {
 
 void GfxCursor32::clearRestrictedArea() {
 	_restrictedArea = _screenRegion.rect;
+	_restrictedAreaScript = Common::Rect();
 }
 
 void GfxCursor32::setView(const GuiResourceId viewId, const int16 loopNo, const int16 celNo) {
@@ -328,12 +330,21 @@ bool GfxCursor32::deviceMoved(Common::Point &position) {
 		position.x = _restrictedArea.right - 1;
 		restricted = true;
 	}
-	if (position.y < _restrictedArea.top) {
-		position.y = _restrictedArea.top;
+	int16 top = _restrictedArea.top;
+	if (!_restrictedAreaScript.isEmpty()) {
+		const int16 hiResTop = g_sci->_gfxFrameout->getHiResLayoutScreenTop(_restrictedAreaScript.top);
+		if (hiResTop >= 0)
+			top = MIN(top, hiResTop);
+	}
+	if (position.y < top) {
+		position.y = top;
 		restricted = true;
 	}
-	if (position.y >= _restrictedArea.bottom) {
-		position.y = _restrictedArea.bottom - 1;
+	int16 bottom = _restrictedArea.bottom;
+	if (!_restrictedAreaScript.isEmpty())
+		bottom = MAX(bottom, g_sci->_gfxFrameout->getHiResLayoutScreenY(_restrictedAreaScript.bottom));
+	if (position.y >= bottom) {
+		position.y = bottom - 1;
 		restricted = true;
 	}
 

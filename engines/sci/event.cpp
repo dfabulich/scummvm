@@ -220,6 +220,7 @@ SciEvent EventManager::getScummVMEvent() {
 
 		Common::Point mousePosSci = mousePos;
 		mulru(mousePosSci, Ratio(gfxFrameout->getScriptWidth(), gfxFrameout->getScreenWidth()), Ratio(gfxFrameout->getScriptHeight(), gfxFrameout->getScreenHeight()));
+		gfxFrameout->adjustMousePositionForHiResLayout(mousePos, mousePosSci);
 		noEvent.mousePosSci = input.mousePosSci = mousePosSci;
 
 		if (_hotRectanglesActive) {

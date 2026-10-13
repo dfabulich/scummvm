@@ -57,6 +57,12 @@ public:
 	inline bool isHiRes() const { return _isHiRes; }
 
 	/**
+	 * Returns true if lowres graphics are drawn at exactly double size on a
+	 * 640x400 screen, with hires graphics drawn at their native pixel size.
+	 */
+	inline bool hasUniformPixels() const { return _uniformPixels; }
+
+	/**
 	 * Gets the x-resolution used by game scripts.
 	 */
 	inline int16 getScriptWidth() const { return _scriptWidth; }
@@ -86,6 +92,8 @@ private:
 	 * Whether or not the game should render at a resolution above 320x240.
 	 */
 	bool _isHiRes;
+
+	bool _uniformPixels;
 
 	/**
 	 * The resolution used by game scripts.
@@ -425,7 +433,40 @@ private:
 public:
 	reg_t kernelIsOnMe(const reg_t object, const Common::Point &position, const bool checkPixel) const;
 
+	/**
+	 * Corrects the script y-coordinate of the mouse when it is over a plane
+	 * whose contents are laid out at the hires scale.
+	 */
+	void adjustMousePositionForHiResLayout(const Common::Point &screenPos, Common::Point &scriptPos) const;
+
+	/**
+	 * Converts a script y-coordinate to a screen y-coordinate using the
+	 * topmost visible plane whose contents are laid out at the hires scale,
+	 * or returns -1 if there is no such plane covering that coordinate.
+	 */
+	int16 getHiResLayoutScreenY(const int16 scriptY) const;
+
+	/**
+	 * Converts a script y-coordinate to a screen y-coordinate using the
+	 * highest visible plane whose contents are laid out at the hires scale
+	 * and whose game rect contains that coordinate, or returns -1 if there is
+	 * no such plane.
+	 */
+	int16 getHiResLayoutScreenTop(const int16 scriptY) const;
+
+	/**
+	 * Moves a plane that would cover a talker's hires bust to the position
+	 * it has at the original hires scale, which keeps it clear of the busts
+	 * since they are drawn at their native size.
+	 */
+	void placeOverTalkers(Plane &plane) const;
+
 private:
+	/**
+	 * Returns true if the given object is an icon (a subclass of IconI).
+	 */
+	bool isIconItem(const reg_t object) const;
+
 	void updateMousePositionForRendering() const {
 		// In SSCI, mouse events were received via hardware interrupt, so the
 		// mouse cursor would always get updated immediately when the user moved

@@ -134,6 +134,12 @@ private:
 	bool _mirrored;
 
 	/**
+	 * Whether the contents of this plane are laid out at the hires scale in
+	 * uniform pixels mode. Set when an icon is added to the plane.
+	 */
+	bool _hiResLayout = false;
+
+	/**
 	 * Whether the picture ID for this plane has changed. This flag is set when
 	 * the plane is created or updated from a VM object, and is cleared when the
 	 * plane is synchronised to another plane (which calls changePic).
@@ -285,6 +291,18 @@ public:
 	}
 
 	void printDebugInfo(Console *con) const;
+
+	/**
+	 * Returns true if, in uniform pixels mode, the contents of this plane are
+	 * laid out at the hires scale, because they're hires graphics positioned
+	 * for the original screen height.
+	 */
+	bool hasHiResLayout() const;
+
+	/**
+	 * Lays out the contents of this plane at the hires scale.
+	 */
+	void setHiResLayout();
 
 	/**
 	 * Compares the properties of the current plane against the properties of

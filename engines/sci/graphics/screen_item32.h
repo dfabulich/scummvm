@@ -215,6 +215,13 @@ public:
 	bool _drawBlackLines;
 
 	/**
+	 * The Talker that this screen item's object belongs to as its eyes or
+	 * mouth, if any. Only looked up in uniform pixels mode, where hires
+	 * talkers are laid out to fit the plane.
+	 */
+	reg_t _talker = NULL_REG;
+
+	/**
 	 * Initialises static Plane members.
 	 */
 	static void init();
@@ -324,6 +331,24 @@ public:
 	 * @note This method was called Update in SSCI.
 	 */
 	void calcRects(const Plane &plane);
+
+	/**
+	 * Returns the Talker object that the given object is a part of, or
+	 * NULL_REG.
+	 */
+	static reg_t findTalker(SegManager *segMan, const reg_t object);
+
+	/**
+	 * Returns the top of a talker's bust in the plane, given the talker's
+	 * y-coordinate.
+	 */
+	static int16 getTalkerBustTop(const Plane &plane, const CelObj &bust, const int16 talkerY);
+
+	/**
+	 * Returns the first row of a GK1 hires credits cel to show when it is
+	 * cropped to fit with uniform pixel size, or -1 for other cels.
+	 */
+	static int16 getGK1CreditsCropTop(const CelObj &celObj);
 
 	/**
 	 * Retrieves the corresponding cel object for this screen item. If a cel

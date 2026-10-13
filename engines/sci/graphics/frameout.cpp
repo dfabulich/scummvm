@@ -61,6 +61,7 @@ namespace Sci {
 
 GfxFrameout::GfxFrameout(SegManager *segMan, GfxPalette32 *palette, GfxTransitions32 *transitions, GfxCursor32 *cursor) :
 	_isHiRes(detectHiRes()),
+	_uniformPixels(_isHiRes && g_sci->getGameId() == GID_GK1 && ConfMan.hasKey("hires_uniform_pixels") && ConfMan.getBool("hires_uniform_pixels")),
 	_palette(palette),
 	_cursor(cursor),
 	_segMan(segMan),
@@ -74,12 +75,21 @@ GfxFrameout::GfxFrameout(SegManager *segMan, GfxPalette32 *palette, GfxTransitio
 
 	if (g_sci->getGameId() == GID_PHANTASMAGORIA) {
 		_currentBuffer.create(630, 450, Graphics::PixelFormat::createFormatCLUT8());
+	} else if (_uniformPixels) {
+		_currentBuffer.create(640, 400, Graphics::PixelFormat::createFormatCLUT8());
 	} else if (_isHiRes) {
 		_currentBuffer.create(640, 480, Graphics::PixelFormat::createFormatCLUT8());
 	} else {
 		_currentBuffer.create(320, 200, Graphics::PixelFormat::createFormatCLUT8());
 	}
 	initGraphics(_currentBuffer.w, _currentBuffer.h);
+
+	// The hires graphics have square pixels, so a 640x400 screen must not get corrected to 4:3
+	if (_uniformPixels && g_system->getFeatureState(OSystem::kFeatureAspectRatioCorrection)) {
+		g_system->beginGFXTransaction();
+		g_system->setFeatureState(OSystem::kFeatureAspectRatioCorrection, false);
+		g_system->endGFXTransaction();
+	}
 
 	switch (g_sci->getGameId()) {
 	case GID_HOYLE5:
@@ -235,6 +245,27 @@ void GfxFrameout::kernelAddScreenItem(const reg_t object) {
 		screenItem = new ScreenItem(object);
 		plane->_screenItemList.add(screenItem);
 	}
+
+	// Interface windows are hires icons positioned for the original screen
+	// height, so their planes are laid out at the hires scale
+	if (_uniformPixels && !plane->hasHiResLayout() && isIconItem(object)) {
+		plane->setHiResLayout();
+	}
+}
+
+bool GfxFrameout::isIconItem(const reg_t object) const {
+	// Plain IconI objects such as the map locations are not interface windows
+	const Object *obj = _segMan->getObject(object);
+	const Object *classObj = obj ? _segMan->getObject(obj->getSuperClassSelector()) : nullptr;
+	for (reg_t super = classObj ? classObj->getSuperClassSelector() : NULL_REG; !super.isNull();) {
+		if (!strcmp(_segMan->getObjectName(super), "IconI"))
+			return true;
+		const Object *superObj = _segMan->getObject(super);
+		if (!superObj)
+			break;
+		super = superObj->getSuperClassSelector();
+	}
+	return false;
 }
 
 void GfxFrameout::kernelUpdateScreenItem(const reg_t object) {
@@ -1303,10 +1334,93 @@ reg_t GfxFrameout::kernelIsOnMe(const reg_t object, const Common::Point &positio
 	return make_reg(0, isOnMe(*screenItem, *plane, position, checkPixel));
 }
 
+void GfxFrameout::adjustMousePositionForHiResLayout(const Common::Point &screenPos, Common::Point &scriptPos) const {
+	if (!_uniformPixels)
+		return;
+
+	for (PlaneList::size_type i = _planes.size(); i > 0; --i) {
+		const Plane &plane = *_planes[i - 1];
+		if (plane._priority < 0 || !plane._planeRect.contains(screenPos))
+			continue;
+
+		if (plane.hasHiResLayout())
+			scriptPos.y = plane._gameRect.top + ((screenPos.y - plane._planeRect.top) * Ratio(_scriptHeight, 480)).toInt();
+		return;
+	}
+}
+
+int16 GfxFrameout::getHiResLayoutScreenY(const int16 scriptY) const {
+	if (!_uniformPixels)
+		return -1;
+
+	int16 screenY = -1;
+	for (PlaneList::size_type i = 0; i < _planes.size(); ++i) {
+		const Plane &plane = *_planes[i];
+		if (plane._priority >= 0 && plane.hasHiResLayout() && scriptY > plane._gameRect.top) {
+			const int16 y = plane._planeRect.top + ((MIN(scriptY, plane._gameRect.bottom) - plane._gameRect.top) * Ratio(480, _scriptHeight)).toInt();
+			screenY = MAX(screenY, MIN(y, plane._planeRect.bottom));
+		}
+	}
+
+	return screenY;
+}
+
+int16 GfxFrameout::getHiResLayoutScreenTop(const int16 scriptY) const {
+	if (!_uniformPixels)
+		return -1;
+
+	int16 screenY = -1;
+	for (PlaneList::size_type i = 0; i < _planes.size(); ++i) {
+		const Plane &plane = *_planes[i];
+		if (plane._priority >= 0 && plane.hasHiResLayout() && scriptY >= plane._gameRect.top && scriptY < plane._gameRect.bottom) {
+			const int16 y = plane._planeRect.top + ((scriptY - plane._gameRect.top) * Ratio(480, _scriptHeight)).toInt();
+			screenY = screenY < 0 ? y : MIN(screenY, y);
+		}
+	}
+
+	return screenY;
+}
+
+void GfxFrameout::placeOverTalkers(Plane &plane) const {
+	for (PlaneList::size_type i = 0; i < _planes.size(); ++i) {
+		const Plane &talkerPlane = *_planes[i];
+		if (&talkerPlane == &plane || talkerPlane._object == plane._object || talkerPlane._priority < 0 || talkerPlane._priority >= plane._priority)
+			continue;
+
+		bool hasTalker = false;
+		bool coversBust = false;
+		for (ScreenItemList::size_type j = 0; j < talkerPlane._screenItemList.size(); ++j) {
+			const ScreenItem *item = talkerPlane._screenItemList[j];
+			if (item == nullptr || item->_deleted)
+				continue;
+			if (!item->_talker.isNull())
+				hasTalker = true;
+			if (item->_celInfo.type == kCelTypeView && item->_screenRect.intersects(plane._planeRect) &&
+				item->getCelObj()._yResolution >= _currentBuffer.h)
+				coversBust = true;
+		}
+
+		if (!hasTalker || !coversBust)
+			continue;
+
+		const int16 height = plane._planeRect.height();
+		int16 top = talkerPlane._planeRect.top + ((plane._gameRect.top - talkerPlane._gameRect.top) * Ratio(480, _scriptHeight)).toInt();
+		top = MIN<int16>(top, talkerPlane._planeRect.bottom - height);
+		// Low-res cels can only be drawn at whole script pixels
+		const int16 scriptDelta = ((top - plane._planeRect.top) * Ratio(_scriptHeight, _currentBuffer.h)).toInt();
+		top = plane._planeRect.top + (scriptDelta * Ratio(_currentBuffer.h, _scriptHeight)).toInt();
+		if (top > plane._planeRect.top) {
+			plane._planeRect.top = top;
+			plane._planeRect.bottom = top + height;
+		}
+		return;
+	}
+}
+
 bool GfxFrameout::isOnMe(const ScreenItem &screenItem, const Plane &plane, const Common::Point &position, const bool checkPixel) const {
 
 	Common::Point scaledPosition(position);
-	mulru(scaledPosition, Ratio(_currentBuffer.w, _scriptWidth), Ratio(_currentBuffer.h, _scriptHeight));
+	mulru(scaledPosition, Ratio(_currentBuffer.w, _scriptWidth), Ratio(plane.hasHiResLayout() ? 480 : _currentBuffer.h, _scriptHeight));
 	scaledPosition.x += plane._planeRect.left;
 	scaledPosition.y += plane._planeRect.top;
 
@@ -1323,7 +1437,9 @@ bool GfxFrameout::isOnMe(const ScreenItem &screenItem, const Plane &plane, const
 		scaledPosition.y -= screenItem._scaledPosition.y;
 
 		if (getSciVersion() < SCI_VERSION_2_1_LATE) {
-			mulru(scaledPosition, Ratio(celObj._xResolution, _currentBuffer.w), Ratio(celObj._yResolution, _currentBuffer.h));
+			// In uniform pixels mode, hires cels shorter than the screen are drawn at their native size
+			const bool nativeHeight = _uniformPixels && celObj._yResolution > _currentBuffer.h && celObj._height < _currentBuffer.h;
+			mulru(scaledPosition, Ratio(celObj._xResolution, _currentBuffer.w), Ratio(nativeHeight ? _currentBuffer.h : celObj._yResolution, _currentBuffer.h));
 		}
 
 		if (screenItem._scale.signal != kScaleSignalNone && screenItem._scale.x && screenItem._scale.y) {
