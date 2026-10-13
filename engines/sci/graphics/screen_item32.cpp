@@ -118,6 +118,17 @@ int16 ScreenItem::getTalkerBustTop(const Plane &plane, const CelObj &bust, const
 	return CLIP<int16>(originalTop * (height - bust._height) / (originalHeight - bust._height), 0, height - bust._height);
 }
 
+int16 ScreenItem::getGK1CreditsCropTop(const CelObj &celObj) {
+	// The DOS hires credits are full screen cels that would be squashed to
+	// fit, so they are cropped instead. Each crop keeps all the names and
+	// cuts as little of the artwork as possible.
+	static const int16 cropTops[] = { 52, 60, 57, 38, 92, 53, 51, 39, 47, 51, 81, 96, 99 };
+	const CelInfo32 &info = celObj._info;
+	if (!g_sci->_gfxFrameout->hasUniformPixels() || info.type != kCelTypeView || info.resourceId < 10600 || info.resourceId > 10612 || celObj._height != 480)
+		return -1;
+	return cropTops[info.resourceId - 10600];
+}
+
 ScreenItem::ScreenItem(const reg_t plane, const CelInfo32 &celInfo) :
 _creationId(_nextCreationId++),
 _plane(plane),
@@ -357,7 +368,7 @@ void ScreenItem::calcRects(const Plane &plane) {
 			celToScreenY = Ratio(screenHeight, celObj._yResolution);
 			// Full screen hires cels can't fit at their native size, so they
 			// keep the original layout and get scaled down instead
-			if (g_sci->_gfxFrameout->hasUniformPixels() && celObj._yResolution > screenHeight && celObj._height < screenHeight)
+			if (g_sci->_gfxFrameout->hasUniformPixels() && celObj._yResolution > screenHeight && (celObj._height < screenHeight || getGK1CreditsCropTop(celObj) >= 0))
 				celToScreenY = celToScreenX;
 		}
 
@@ -452,6 +463,10 @@ void ScreenItem::calcRects(const Plane &plane) {
 					const int16 offset = ((top - bustTop) * 2 * celObj._yResolution + 480) / (2 * 480);
 					_scaledPosition.y = getTalkerBustTop(plane, bust, talkerY) + offset;
 				}
+
+				const int16 cropTop = getGK1CreditsCropTop(celObj);
+				if (cropTop >= 0 && celToScreenY.isOne())
+					_scaledPosition.y = -cropTop;
 			}
 
 			_screenItemRect.translate(_scaledPosition.x, _scaledPosition.y);

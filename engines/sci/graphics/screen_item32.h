@@ -345,6 +345,12 @@ public:
 	static int16 getTalkerBustTop(const Plane &plane, const CelObj &bust, const int16 talkerY);
 
 	/**
+	 * Returns the first row of a GK1 hires credits cel to show when it is
+	 * cropped to fit with uniform pixel size, or -1 for other cels.
+	 */
+	static int16 getGK1CreditsCropTop(const CelObj &celObj);
+
+	/**
 	 * Retrieves the corresponding cel object for this screen item. If a cel
 	 * object does not already exist, one will be created and assigned.
 	 */
