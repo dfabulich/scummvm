@@ -32,6 +32,7 @@
 #include "sci/engine/kernel.h"
 #include "sci/engine/object.h"
 #include "sci/engine/selector.h"
+#include "sci/engine/state.h"
 
 namespace Sci {
 
@@ -256,6 +257,14 @@ void SoundCommandParser::processPlaySound(reg_t obj, bool playBed, bool restorin
 
 	debugC(kDebugLevelSound, "kDoSound(play): %04x:%04x number %d, loop %d, prio %d, vol %d, bed %d", PRINT_REG(obj),
 			resourceId, musicSlot->loop, musicSlot->priority, musicSlot->volume, playBed ? 1 : 0);
+
+	if (g_sci->getGameId() == GID_GK1 && resourceId == 100) {
+		warning("GK1: Room %d playing nightmare theme sound 100 as %s; audio 100 exists: %s, audio 99 (digital nightmare theme) exists: %s",
+				g_sci->getEngineState()->currentRoomNumber(),
+				musicSlot->isSample ? "digital" : "MIDI",
+				_resMan->testResource(ResourceId(kResourceTypeAudio, 100)) ? "yes" : "no",
+				_resMan->testResource(ResourceId(kResourceTypeAudio, 99)) ? "yes" : "no");
+	}
 
 	_music->soundPlay(musicSlot, restoring);
 
