@@ -95,6 +95,15 @@ uint16 SoundCommandParser::getSoundResourceId(reg_t obj) {
 			resourceId += 1000;
 		}
 	}
+	// #9791: GK1 CD's nightmare scripts play sound 100, but the CD only includes the
+	// digital version of the nightmare theme as audio 99, so SSCI fell back to
+	// the MIDI track. Use the digital track when it's available.
+	if (g_sci->getGameId() == GID_GK1 &&
+		resourceId == 100 &&
+		!_resMan->testResource(ResourceId(kResourceTypeAudio, 100)) &&
+		_resMan->testResource(ResourceId(kResourceTypeAudio, 99))) {
+		resourceId = 99;
+	}
 
 	return resourceId;
 }
