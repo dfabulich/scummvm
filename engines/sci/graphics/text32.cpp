@@ -49,19 +49,30 @@ GfxText32::GfxText32(SegManager *segMan, GfxCache *fonts) :
 	// SSCI did not initialise height, so we intentionally do not do so also
 	_width(0),
 	_text(""),
-	_bitmap(NULL_REG) {
+	_bitmap(NULL_REG),
+	_hiresTextScale(1) {
 		_fontId = kSci32SystemFont;
 		_font = _cache->getFont(kSci32SystemFont);
 	}
 
-void GfxText32::init() {
-	_xResolution = g_sci->_gfxFrameout->getScriptWidth();
-	_yResolution = g_sci->_gfxFrameout->getScriptHeight();
+static void gk1ResetTextResolution(const bool useNativeHiresText) {
+	GfxText32::_xResolution = g_sci->_gfxFrameout->getScriptWidth();
+	GfxText32::_yResolution = g_sci->_gfxFrameout->getScriptHeight();
 	// GK1 Korean patched version uses doubled resolution for fonts
 	if (g_sci->getGameId() == GID_GK1 && g_sci->getLanguage() == Common::KO_KOR) {
-		_xResolution = _xResolution * 2;
-		_yResolution = _yResolution * 2;
+		GfxText32::_xResolution *= 2;
+		GfxText32::_yResolution *= 2;
+	} else if (useNativeHiresText) {
+		// Tag text bitmaps with the real hires buffer size (640x480), not 2x
+		// script (640x400). Otherwise ScreenItem scales 400→480 (6/5) and the
+		// uneven 200→480 vertical stretch still shows up in the glyphs.
+		GfxText32::_xResolution = g_sci->_gfxFrameout->getScreenWidth();
+		GfxText32::_yResolution = g_sci->_gfxFrameout->getScreenHeight();
 	}
+}
+
+void GfxText32::init() {
+	gk1ResetTextResolution(false);
 }
 
 reg_t GfxText32::createFontBitmap(int16 width, int16 height, const Common::Rect &rect, const Common::String &text, const uint8 foreColor, const uint8 backColor, const uint8 skipColor, const GuiResourceId fontId, const TextAlign alignment, const int16 borderColor, const bool dimmed, const bool doScaling, const bool gc) {
@@ -247,8 +258,7 @@ reg_t GfxText32::createTitledFontBitmap(int16 width, int16 height, const Common:
 	}
 
 	// draw text
-	GfxFont *font = _cache->getFont(fontId);
-	if (_textRect.height() >= font->getHeight()) {
+	if (_textRect.height() >= getDrawFontHeight()) {
 		drawTextBox();
 	}
 
@@ -256,14 +266,31 @@ reg_t GfxText32::createTitledFontBitmap(int16 width, int16 height, const Common:
 }
 
 void GfxText32::setFont(const GuiResourceId fontId) {
+	// GK1 CD high-resolution text:
+	// - Font 30 (Ask About): remap to font 4 at native 640x480, 1x glyphs
+	// - Fonts 4, 0, and 40: native 640x480 with 2x glyphs so on-screen size
+	//   stays close to the old 200→480 stretch without the uneven 3-2-3-2-2
+	//   pattern.
+	const bool hiresOn = g_sci->useHiresText() && g_sci->_gfxFrameout && g_sci->_gfxFrameout->isHiRes();
+	const bool remapAskAbout = hiresOn && fontId == 30;
+	const bool scaleLowResFont = hiresOn && (fontId == 4 || fontId == 0 || fontId == 40);
+	const GuiResourceId resolvedFontId = remapAskAbout ? 4 : fontId;
+
+	gk1ResetTextResolution(remapAskAbout || scaleLowResFont);
+	_hiresTextScale = scaleLowResFont ? 2 : 1;
+
 	// In SSCI, this calls FontMgr::BuildFontTable, and then a font table is
 	// built on the FontMgr directly; instead, because we already have GfxFont
 	// resources from SCI16 and those resources did not change in SCI32, this
 	// code just grabs those out of GfxCache
-	if (fontId != _fontId) {
-		_fontId = fontId;
+	if (resolvedFontId != _fontId) {
+		_fontId = resolvedFontId;
 		_font = _cache->getFont(_fontId);
 	}
+}
+
+int16 GfxText32::getDrawFontHeight() const {
+	return _font->getHeight() * _hiresTextScale;
 }
 
 void GfxText32::drawFrame(const Common::Rect &rect, const int16 size, const uint8 color, const bool doScaling) {
@@ -304,18 +331,43 @@ void GfxText32::drawFrame(const Common::Rect &rect, const int16 size, const uint
 void GfxText32::drawChar(const uint16 charIndex) {
 	SciBitmap &bitmap = *_segMan->lookupBitmap(_bitmap);
 	byte *pixels = bitmap.getPixels();
+	const int16 charWidth = _font->getCharWidth(charIndex);
+	const int16 charHeight = _font->getCharHeight(charIndex);
 
-	_font->drawToBuffer(charIndex, _drawPosition.y, _drawPosition.x, _foreColor, _dimmed, pixels, _width, _height);
-	_drawPosition.x += _font->getCharWidth(charIndex);
+	if (_hiresTextScale <= 1) {
+		_font->drawToBuffer(charIndex, _drawPosition.y, _drawPosition.x, _foreColor, _dimmed, pixels, _width, _height);
+		_drawPosition.x += charWidth;
+		return;
+	}
+
+	// Nearest-neighbor upscale into the hires text bitmap (2x for GK1 dialogue).
+	Common::Array<byte> tmp(charWidth * charHeight, _skipColor);
+	_font->drawToBuffer(charIndex, 0, 0, _foreColor, _dimmed, tmp.data(), charWidth, charHeight);
+	for (int16 y = 0; y < charHeight; ++y) {
+		for (int16 x = 0; x < charWidth; ++x) {
+			const byte color = tmp[y * charWidth + x];
+			if (color == _skipColor)
+				continue;
+			for (int16 dy = 0; dy < _hiresTextScale; ++dy) {
+				for (int16 dx = 0; dx < _hiresTextScale; ++dx) {
+					const int16 bufX = _drawPosition.x + x * _hiresTextScale + dx;
+					const int16 bufY = _drawPosition.y + y * _hiresTextScale + dy;
+					if (bufX >= 0 && bufX < _width && bufY >= 0 && bufY < _height)
+						pixels[bufY * _width + bufX] = color;
+				}
+			}
+		}
+	}
+	_drawPosition.x += charWidth * _hiresTextScale;
 }
 
 int16 GfxText32::getScaledFontHeight() const {
 	const int16 scriptHeight = g_sci->_gfxFrameout->getScriptHeight();
-	return (_font->getHeight() * scriptHeight + _yResolution - 1) / _yResolution;
+	return (getDrawFontHeight() * scriptHeight + _yResolution - 1) / _yResolution;
 }
 
 uint16 GfxText32::getCharWidth(const uint16 charIndex, const bool doScaling) const {
-	uint16 width = _font->getCharWidth(charIndex);
+	uint16 width = _font->getCharWidth(charIndex) * _hiresTextScale;
 	if (doScaling) {
 		width = scaleUpWidth(width);
 	}
@@ -370,7 +422,7 @@ void GfxText32::drawTextBox() {
 		drawText(charIndex, length);
 		charIndex = nextCharIndex;
 		text = sourceText + charIndex;
-		_drawPosition.y += _font->getHeight();
+		_drawPosition.y += getDrawFontHeight();
 	}
 }
 
@@ -735,6 +787,10 @@ void GfxText32::getTextDimensions(const uint index, uint length, int16 &width, i
 				}
 
 				if (length > 0) {
+					// Match setFont remapping for inline |fN| font changes
+					if (fontId == 30 && g_sci->useHiresText() && g_sci->_gfxFrameout && g_sci->_gfxFrameout->isHiRes()) {
+						fontId = 4;
+					}
 					font = _cache->getFont(fontId);
 				}
 			}
@@ -749,8 +805,8 @@ void GfxText32::getTextDimensions(const uint index, uint length, int16 &width, i
 				--length;
 			}
 		} else {
-			width += font->getCharWidth((unsigned char)currentChar);
-			byte charHeight = font->getCharHeight((unsigned char)currentChar);
+			width += font->getCharWidth((unsigned char)currentChar) * _hiresTextScale;
+			byte charHeight = font->getCharHeight((unsigned char)currentChar) * _hiresTextScale;
 			if (height < charHeight) {
 				height = charHeight;
 			}
@@ -811,7 +867,7 @@ Common::Rect GfxText32::getTextSize(const Common::String &text, int16 maxWidth, 
 				// TODO: Due to getLongest and getTextWidth not having side
 				// effects, it is possible that the currently loaded font's
 				// height is wrong for this line if it was changed inline
-				result.bottom += _font->getHeight();
+				result.bottom += getDrawFontHeight();
 			}
 		}
 
@@ -829,7 +885,7 @@ Common::Rect GfxText32::getTextSize(const Common::String &text, int16 maxWidth, 
 			// This was not the case in the other branch, which decremented the
 			// bottom by 1 at the end of the loop. For accuracy, we do what SSCI
 			// did, even though this means the result is a pixel off
-			result.bottom = _font->getHeight() + 1;
+			result.bottom = getDrawFontHeight() + 1;
 		}
 	}
 
@@ -868,7 +924,7 @@ int16 GfxText32::getTextCount(const Common::String &text, const uint index, cons
 
 	uint charIndex = index;
 	int16 maxWidth = scaledRect.width();
-	int16 lineCount = (scaledRect.height() - 2) / _font->getHeight();
+	int16 lineCount = (scaledRect.height() - 2) / getDrawFontHeight();
 	while (lineCount--) {
 		getLongest(&charIndex, maxWidth);
 	}
@@ -886,7 +942,7 @@ void GfxText32::scrollLine(const Common::String &lineText, int numLines, uint8 c
 	SciBitmap &bmr = *_segMan->lookupBitmap(_bitmap);
 	byte *pixels = bmr.getPixels();
 
-	int h = _font->getHeight();
+	int h = getDrawFontHeight();
 
 	if (dir == kScrollUp) {
 		// Scroll existing text down

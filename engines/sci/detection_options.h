@@ -52,6 +52,18 @@ const ADExtraGuiOptionsMap optionsList[] = {
 	},
 
 	{
+		GAMEOPTION_HIGH_RESOLUTION_TEXT,
+		{
+			_s("Enable high resolution text"),
+			_s("Draw Ask About topics with the dialogue font at native high resolution"),
+			"enable_high_resolution_text",
+			false,
+			0,
+			0
+		}
+	},
+
+	{
 		GAMEOPTION_ENABLE_BLACK_LINED_VIDEO,
 		{
 			_s("Enable black-lined video"),
