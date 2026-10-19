@@ -91,6 +91,22 @@ namespace Sci {
 #define END kEndOfPatch
 
 #pragma mark -
+#pragma mark Gabriel Knight 1
+
+// The English CD release's dialogue/topic font (font 30) uses the same bitmap
+// for 'S' and 's', so lowercase s looks like a capital. The French, German, and
+// Spanish releases share a corrected font 30 with 3x6 glyphs. English glyph
+// slots are only 7 bytes (width, height, 5 row bytes), so the de/es/fr shapes
+// are copied here as 3x5 by dropping one blank padding row.
+static const byte gk1EnglishFont30[] = {
+	SKIP(1066),                                         // seek to 'S'
+	REPLACE(0x03, 0x05, 0x20, 0x40, 0x60, 0x20, 0x40), // 'S' from fr/de/es
+	SKIP(222),                                          // seek to 's' (offset 1295)
+	REPLACE(0x03, 0x05, 0x00, 0x20, 0x40, 0x20, 0x40), // 's' from fr/de/es
+	END
+};
+
+#pragma mark -
 #pragma mark Laura Bow 2
 
 // LB2CD removed diagonal walking loops from the views of actors in the museum,
@@ -489,6 +505,7 @@ static const byte torinPassageRussianPic61101[] = {
 #pragma mark Patch table
 
 static const GameResourcePatch resourcePatches[] = {
+	{ GID_GK1,            SCI_MEDIA_CD,     Common::EN_ANY,   kResourceTypeFont,      30, gk1EnglishFont30,           false },
 	{ GID_LAURABOW2,      SCI_MEDIA_CD,     Common::UNK_LANG, kResourceTypeView,      828, lauraBow2CdView828,         false },
 	{ GID_LSL1,           SCI_MEDIA_ALL,    Common::RU_RUS,   kResourceTypeSound,     205, lsl1RussianSound205,        false },
 	{ GID_PHANTASMAGORIA, SCI_MEDIA_ALL,    Common::UNK_LANG, kResourceTypeView,    64001, phant1View64001Palette,     false },
