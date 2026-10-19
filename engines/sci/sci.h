@@ -199,6 +199,12 @@ public:
 	bool useHiresGraphics() const;
 
 	/**
+	 * Returns true if the user enabled high-resolution text (GK1 CD).
+	 * When active in hires mode, Ask About topics use font 4 instead of font 30.
+	 */
+	bool useHiresText() const;
+
+	/**
 	 * Returns true if the game's original platform is Macintosh or Amiga.
 	 * Note that this is not necessarily the endianness of the game's resources.
 	 */
@@ -418,6 +424,7 @@ private:
 	Common::RandomSource _rng;
 	Common::MacResManager _macExecutable;
 	bool _useHiresGraphics; // user-option for GK1, KQ6, PQ4
+	bool _useHiresText; // user-option for GK1 CD
 	bool _inErrorString; /**< Set while `errorString` is executing */
 };
 

@@ -116,9 +116,17 @@ private:
 	 */
 	Common::Point _drawPosition;
 
+	/**
+	 * Pixel scale applied when drawing glyphs for GK1 high-resolution text.
+	 * Font 4 uses 2 (Korean-style 2x size into the 640x480 buffer); remapped
+	 * Ask About text (font 30→4) uses 1.
+	 */
+	int16 _hiresTextScale;
+
 	void drawFrame(const Common::Rect &rect, const int16 size, const uint8 color, const bool doScaling);
 
 	void drawChar(const uint16 charIndex);
+	int16 getDrawFontHeight() const;
 	void drawText(const uint index, uint length);
 
 	/**

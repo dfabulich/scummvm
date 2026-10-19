@@ -38,6 +38,17 @@ OptionsWidget::OptionsWidget(GuiObject *boss, const Common::String &name, const 
 		OptionsContainerWidget(boss, name, "SciGameOptionsDialog", domain) {
 	_guiOptions = ConfMan.get("guioptions", domain);
 
+	// Cached guioptions are only rewritten on game start (createInstance).
+	// If a new GAMEOPTION was added after the target was created, refresh it
+	// here so the launcher shows the new checkbox without requiring a launch.
+	if (checkGameGUIOption(GAMEOPTION_GK1_ENABLE_AUDIO_POPFIX, _guiOptions) &&
+	    !checkGameGUIOption(GAMEOPTION_HIGH_RESOLUTION_TEXT, _guiOptions)) {
+		_guiOptions += " ";
+		_guiOptions += Common::getGameGUIOptionsDescription(GAMEOPTION_HIGH_RESOLUTION_TEXT);
+		ConfMan.set("guioptions", _guiOptions, domain);
+		ConfMan.flushToDisk();
+	}
+
 	for (const ADExtraGuiOptionsMap *entry = optionsList; entry->guioFlag; ++entry)
 		if (checkGameGUIOption(entry->guioFlag, _guiOptions))
 			_checkboxes[entry->option.configOption] = new GUI::CheckboxWidget(widgetsBoss(), _dialogLayout + "." + entry->option.configOption, _(entry->option.label), _(entry->option.tooltip));
